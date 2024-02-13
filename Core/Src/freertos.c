@@ -45,7 +45,11 @@
 /* Private typedef -----------------------------------------------------------*/
 typedef StaticTask_t osStaticThreadDef_t;
 /* USER CODE BEGIN PTD */
-
+typedef struct
+{
+  void *cfg;
+  uint32_t enc_hist;
+} encoder_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -86,6 +90,10 @@ void *microros_allocate(size_t size, void *state);
 void microros_deallocate(void *pointer, void *state);
 void *microros_reallocate(void *pointer, size_t size, void *state);
 void *microros_zero_allocate(size_t number_of_elements, size_t size_of_element, void *state);
+
+void app_encoder_init(encoder_t *henc, void *encoder_cfg);
+uint32_t app_encoder_get_value(encoder_t *henc);
+int32_t app_encoder_diff_value(encoder_t *henc);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -184,7 +192,8 @@ void StartDefaultTask(void *argument)
 
   msg.data = 0;
   // Init encoder
-  HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
+  encoder_t henc1;
+  app_encoder_init(&henc1, (void *)&htim2);
 
   /* Infinite loop */
   for (;;)
@@ -196,7 +205,7 @@ void StartDefaultTask(void *argument)
     }
 
     // msg.data++;
-    msg.data = ((TIM2->CNT) >> 2);
+    msg.data = (uint32_t)app_encoder_diff_value(&henc1);
     osDelay(10);
   }
   /* USER CODE END StartDefaultTask */
@@ -204,5 +213,24 @@ void StartDefaultTask(void *argument)
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
+void app_encoder_init(encoder_t *henc, void *encoder_cfg)
+{
+  henc->cfg = encoder_cfg;
+  henc->enc_hist = 0;
+  HAL_TIM_Encoder_Start((TIM_HandleTypeDef *)encoder_cfg, TIM_CHANNEL_ALL);
+}
+
+uint32_t app_encoder_get_value(encoder_t *henc)
+{
+  return ((TIM2->CNT) >> 2);
+}
+
+int32_t app_encoder_diff_value(encoder_t *henc)
+{
+  uint32_t enc_new = app_encoder_get_value(henc);
+  int32_t enc_diff = enc_new - henc->enc_hist;
+  henc->enc_hist = enc_new;
+  return enc_diff * 1000;
+}
 
 /* USER CODE END Application */
