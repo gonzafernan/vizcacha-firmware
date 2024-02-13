@@ -37,6 +37,7 @@ BUILD_DIR = build
 # C sources
 C_SOURCES =  \
 Core/Src/main.c \
+Core/Src/syscalls.c \
 Core/Src/gpio.c \
 Core/Src/freertos.c \
 Core/Src/dma.c \
@@ -224,3 +225,6 @@ clean:
 -include $(wildcard $(BUILD_DIR)/*.d)
 
 # *** EOF ***
+
+flash: $(BUILD_DIR)/$(TARGET).bin
+	st-flash --reset write $< 0x08000000
