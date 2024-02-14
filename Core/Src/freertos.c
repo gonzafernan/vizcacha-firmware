@@ -40,6 +40,8 @@
 #include "usart.h"
 #include "tim.h"
 
+#include "example_interfaces/srv/add_two_ints.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,11 +61,36 @@ typedef struct
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+#define RCCHECK(fn)                                                             \
+  {                                                                             \
+    rcl_ret_t temp_rc = fn;                                                     \
+    if ((temp_rc != RCL_RET_OK))                                                \
+    {                                                                           \
+      printf(                                                                   \
+          "Failed status on line %d: %d. Aborting.\n", __LINE__, (int)temp_rc); \
+      return 1;                                                                 \
+    }                                                                           \
+  }
+#define RCSOFTCHECK(fn)                                                           \
+  {                                                                               \
+    rcl_ret_t temp_rc = fn;                                                       \
+    if ((temp_rc != RCL_RET_OK))                                                  \
+    {                                                                             \
+      printf(                                                                     \
+          "Failed status on line %d: %d. Continuing.\n", __LINE__, (int)temp_rc); \
+    }                                                                             \
+  }
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
+rcl_publisher_t publisher;
+std_msgs__msg__Int32 msg;
+
+example_interfaces__srv__AddTwoInts_Request req;
+example_interfaces__srv__AddTwoInts_Response res;
+
+encoder_t henc1;
 
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
@@ -94,6 +121,31 @@ void *microros_zero_allocate(size_t number_of_elements, size_t size_of_element, 
 void app_encoder_init(encoder_t *henc, void *encoder_cfg);
 uint32_t app_encoder_get_value(encoder_t *henc);
 int32_t app_encoder_diff_value(encoder_t *henc);
+
+// Implementation example:
+void service_callback(const void *request_msg, void *response_msg)
+{
+  // Cast messages to expected types
+  example_interfaces__srv__AddTwoInts_Request *req_in =
+      (example_interfaces__srv__AddTwoInts_Request *)request_msg;
+  example_interfaces__srv__AddTwoInts_Response *res_in =
+      (example_interfaces__srv__AddTwoInts_Response *)response_msg;
+
+  // Handle request message and set the response message values
+  printf("Client requested sum of %d and %d.\n", (int)req_in->a, (int)req_in->b);
+  res_in->sum = req_in->a + req_in->b;
+}
+
+void publisher_timer_callback(rcl_timer_t *timer, int64_t last_call_time)
+{
+  rcl_ret_t rc;
+  UNUSED(last_call_time);
+  if (timer != NULL)
+  {
+    msg.data = (uint32_t)app_encoder_diff_value(&henc1);
+    rc = rcl_publish(&publisher, &msg, NULL);
+  }
+}
 
 /* USER CODE END FunctionPrototypes */
 
@@ -169,11 +221,10 @@ void StartDefaultTask(void *argument)
   }
 
   // micro-ROS app
-  rcl_publisher_t publisher;
-  std_msgs__msg__Int32 msg;
   rclc_support_t support;
   rcl_allocator_t allocator;
   rcl_node_t node;
+  rcl_ret_t rc;
 
   allocator = rcl_get_default_allocator();
 
@@ -190,22 +241,78 @@ void StartDefaultTask(void *argument)
       ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
       "cubemx_publisher");
 
+  rcl_timer_t my_timer;
+  const unsigned int timer_timeout = 1000; // in ms
+
   msg.data = 0;
+
   // Init encoder
-  encoder_t henc1;
   app_encoder_init(&henc1, (void *)&htim2);
+
+  // Init PWM channels
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
+  TIM4->CCR1 = 65535;
+
+  // Service server object
+  rcl_service_t service = rcl_get_zero_initialized_service();
+  // Initialize server with default configuration
+  rclc_service_init_default(
+      &service, &node,
+      ROSIDL_GET_SRV_TYPE_SUPPORT(example_interfaces, srv, AddTwoInts), "/addtwoints");
+
+  // create executor
+  rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
+  rclc_executor_init(&executor, &support.context, 2, &allocator);
+
+  unsigned int rcl_wait_timeout = 1000; // in ms
+  rclc_executor_set_timeout(&executor, RCL_MS_TO_NS(rcl_wait_timeout));
+  rc = rclc_timer_init_default(&my_timer, &support, RCL_MS_TO_NS(timer_timeout), publisher_timer_callback);
+  rclc_executor_add_timer(&executor, &my_timer);
+  // if (rc != RCL_RET_OK)
+  // {
+  //   printf("Error in rcl_timer_init_default.\n");
+  //   return -1;
+  // }
+  // else
+  // {
+  //   printf("Created timer with timeout %d ms.\n", timer_timeout);
+  // }
+
+  // Add server callback to the executor
+  rclc_executor_add_service(&executor, &service, &req, &res, service_callback);
+
+  // Optional prepare for avoiding allocations during spin
+  rclc_executor_prepare(&executor);
+
+  // Spin executor to receive requests
+  rclc_executor_spin(&executor);
+
+  rcl_service_fini(&service, &node);
+  rcl_node_fini(&node);
+
+  // if (rc != RCL_RET_OK)
+  // {
+  //   // return -1;
+  // }
 
   /* Infinite loop */
   for (;;)
   {
-    rcl_ret_t ret = rcl_publish(&publisher, &msg, NULL);
-    if (ret != RCL_RET_OK)
-    {
-      printf("Error publishing (line %d)\n", __LINE__);
-    }
+    // rcl_ret_t ret = rcl_publish(&publisher, &msg, NULL);
+    // if (ret != RCL_RET_OK)
+    // {
+    //   printf("Error publishing (line %d)\n", __LINE__);
+    // }
 
     // msg.data++;
-    msg.data = (uint32_t)app_encoder_diff_value(&henc1);
+    // if (msg.data < -2500)
+    // {
+    //   TIM4->CCR1 = 0;
+    // }
+    // else
+    // {
+    //   TIM4->CCR1 = 65535;
+    // }
     osDelay(10);
   }
   /* USER CODE END StartDefaultTask */
