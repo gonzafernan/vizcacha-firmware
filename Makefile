@@ -36,6 +36,7 @@ BUILD_DIR = build
 ######################################
 # C sources
 C_SOURCES =  \
+app/src/micro_ros_layer.c \
 Core/Src/main.c \
 Core/Src/syscalls.c \
 Core/Src/gpio.c \
@@ -130,6 +131,7 @@ AS_INCLUDES =  \
 
 # C includes
 C_INCLUDES =  \
+-Iapp/inc \
 -ICore/Inc \
 -IDrivers/STM32F4xx_HAL_Driver/Inc \
 -IDrivers/STM32F4xx_HAL_Driver/Inc/Legacy \
