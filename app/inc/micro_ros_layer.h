@@ -11,13 +11,16 @@
 extern "C"
 {
 #endif
+
+#include <stdint.h>
     /**
      * @brief micro-ROS layer task creation
      * To be called between the kernel initialization (osKernelInitialize)
      * and the kernel start (osKernelStart).
      * @param transport_obj transport object (e.g. USART handle)
+     * @param pub_callback publisher callback
      */
-    void uros_layer_init(void *transport_obj);
+    void uros_layer_init(void *transport_obj, int32_t (*pub_callback)(void));
 
 #ifdef __cplusplus
 }

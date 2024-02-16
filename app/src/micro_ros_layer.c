@@ -4,10 +4,13 @@
  * @author Gonzalo G. Fernandez
  */
 
+#include "micro_ros_layer.h"
+
 #include "FreeRTOS.h"
 #include "cmsis_os.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include <rcl/rcl.h>
 #include <rcl/error_handling.h> /** @todo To use error handling */
@@ -25,6 +28,7 @@ typedef StaticTask_t osStaticThreadDef_t;
 typedef struct
 {
     void *transport_obj;
+    int32_t (*pub_callback)(void);
 
 } uros_task_args_t;
 
@@ -70,9 +74,10 @@ void *microros_zero_allocate(size_t number_of_elements, size_t size_of_element, 
  * To be called between the kernel initialization (osKernelInitialize)
  * and the kernel start (osKernelStart).
  */
-void uros_layer_init(void *transport_obj)
+void uros_layer_init(void *transport_obj, int32_t (*pub_callback)(void))
 {
     uros_task_args.transport_obj = transport_obj;
+    uros_task_args.pub_callback = pub_callback;
     uros_task_handle = osThreadNew(uros_layer_task, (void *)&uros_task_args, &uros_task_attr);
 }
 
@@ -84,8 +89,11 @@ void publisher_timer_callback(rcl_timer_t *timer, int64_t last_call_time)
     rcl_ret_t rc;
     if (timer != NULL)
     {
-        msg.data++;
-        rc = rcl_publish(&publisher, &msg, NULL);
+        if (uros_task_args.pub_callback != NULL)
+        {
+            msg.data = uros_task_args.pub_callback();
+            rc = rcl_publish(&publisher, &msg, NULL);
+        }
     }
 }
 
