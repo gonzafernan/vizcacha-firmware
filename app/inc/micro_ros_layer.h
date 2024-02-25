@@ -19,8 +19,9 @@ extern "C"
      * and the kernel start (osKernelStart).
      * @param transport_obj transport object (e.g. USART handle)
      * @param pub_callback publisher callback
+     * @param sub_callback subscriber callback
      */
-    void uros_layer_init(void *transport_obj, int32_t (*pub_callback)(void));
+    void uros_layer_init(void *transport_obj, int32_t (*pub_callback)(void), void (*sub_callback)(int));
 
 #ifdef __cplusplus
 }

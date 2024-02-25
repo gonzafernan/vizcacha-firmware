@@ -29,6 +29,7 @@ typedef struct
 {
     void *transport_obj;
     int32_t (*pub_callback)(void);
+    void (*sub_callback)(int);
 
 } uros_task_args_t;
 
@@ -50,7 +51,9 @@ static uros_task_args_t uros_task_args;
 
 // micro-ROS private variables
 rcl_publisher_t publisher;
+rcl_subscription_t subscriber;
 std_msgs__msg__Int32 msg;
+std_msgs__msg__Int32 msg_sub;
 
 example_interfaces__srv__AddTwoInts_Request req;
 example_interfaces__srv__AddTwoInts_Response res;
@@ -74,10 +77,11 @@ void *microros_zero_allocate(size_t number_of_elements, size_t size_of_element, 
  * To be called between the kernel initialization (osKernelInitialize)
  * and the kernel start (osKernelStart).
  */
-void uros_layer_init(void *transport_obj, int32_t (*pub_callback)(void))
+void uros_layer_init(void *transport_obj, int32_t (*pub_callback)(void), void (*sub_callback)(int))
 {
     uros_task_args.transport_obj = transport_obj;
     uros_task_args.pub_callback = pub_callback;
+    uros_task_args.sub_callback = sub_callback;
     uros_task_handle = osThreadNew(uros_layer_task, (void *)&uros_task_args, &uros_task_attr);
 }
 
@@ -94,6 +98,19 @@ void publisher_timer_callback(rcl_timer_t *timer, int64_t last_call_time)
             msg.data = uros_task_args.pub_callback();
             rc = rcl_publish(&publisher, &msg, NULL);
         }
+    }
+}
+
+/**
+ * @brief micro-ROS subscriber callback
+ */
+void subscription_callback(const void *msgin)
+{
+    // Cast received message to used type
+    const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
+    if (uros_task_args.sub_callback != NULL)
+    {
+        uros_task_args.sub_callback((int)msg->data);
     }
 }
 
@@ -166,6 +183,19 @@ void uros_layer_task(void *pv_parameters)
     unsigned int rcl_wait_timeout = 1000; // ms
     rclc_executor_set_timeout(&executor, RCL_MS_TO_NS(rcl_wait_timeout));
 
+    // subscriber
+    rclc_subscription_init_default(
+        &subscriber,
+        &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+        "vel_cmd");
+    rclc_executor_add_subscription(
+        &executor,
+        &subscriber,
+        &msg_sub,
+        &subscription_callback,
+        ON_NEW_DATA);
+
     // timer for publisher
     rcl_timer_t publisher_timer;
     const unsigned int timer_timeout = 1000; // ms
@@ -191,5 +221,7 @@ void uros_layer_task(void *pv_parameters)
 
     // close micro-ROS service and node
     rcl_service_fini(&service, &node);
+    rcl_publisher_fini(&publisher, &node);
+    rcl_subscription_fini(&subscriber, &node);
     rcl_node_fini(&node);
 }

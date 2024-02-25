@@ -38,6 +38,7 @@ BUILD_DIR = build
 C_SOURCES =  \
 app/src/micro_ros_layer.c \
 app/src/encoder.c \
+app/src/hbridge.c \
 Core/Src/main.c \
 Core/Src/syscalls.c \
 Core/Src/gpio.c \

@@ -28,8 +28,8 @@
 
 #include "micro_ros_layer.h"
 #include "encoder.h"
+#include "hbridge.h"
 #include "usart.h"
-#include "tim.h"
 
 /* USER CODE END Includes */
 
@@ -103,7 +103,8 @@ void MX_FREERTOS_Init(void)
   /* USER CODE BEGIN Init */
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
   encoder_init();
-  uros_layer_init((void *)&huart3, encoder_diff_value);
+  hbridge_init();
+  uros_layer_init((void *)&huart3, encoder_diff_value, hbridge_set_pwm);
   /* USER CODE END Init */
   /* USER CODE BEGIN Header */
   /**
@@ -148,8 +149,8 @@ void StartDefaultTask(void *argument)
   // app_encoder_init(&henc1, (void *)&htim2);
 
   // Init PWM channels
-  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
-  TIM4->CCR1 = 65535;
+  // HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
+  // TIM4->CCR1 = 65535;
 
   /* Infinite loop */
   for (;;)
