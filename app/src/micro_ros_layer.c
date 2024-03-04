@@ -12,24 +12,24 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include <rcl/rcl.h>
 #include <rcl/error_handling.h> /** @todo To use error handling */
-#include <rclc/rclc.h>
+#include <rcl/rcl.h>
 #include <rclc/executor.h>
-#include <uxr/client/transport.h>
-#include <rmw_microxrcedds_c/config.h> // not sure why
+#include <rclc/rclc.h>
 #include <rmw_microros/rmw_microros.h>
+#include <rmw_microxrcedds_c/config.h> // not sure why
 #include <std_msgs/msg/int32.h>
+#include <uxr/client/transport.h>
 
 #include "example_interfaces/srv/add_two_ints.h"
 
 typedef StaticTask_t osStaticThreadDef_t;
 
-typedef struct
-{
+typedef struct {
     void *transport_obj;
     int32_t (*pub_callback)(void);
-    void (*sub_callback)(int);
+    void (*sub_callback)(void *, int);
+    void *sub_args;
 
 } uros_task_args_t;
 
@@ -64,8 +64,10 @@ void uros_layer_task(void *pv_parameters);
 // micro-ROS private function prototypes
 bool cubemx_transport_open(struct uxrCustomTransport *transport);
 bool cubemx_transport_close(struct uxrCustomTransport *transport);
-size_t cubemx_transport_write(struct uxrCustomTransport *transport, const uint8_t *buf, size_t len, uint8_t *err);
-size_t cubemx_transport_read(struct uxrCustomTransport *transport, uint8_t *buf, size_t len, int timeout, uint8_t *err);
+size_t cubemx_transport_write(struct uxrCustomTransport *transport, const uint8_t *buf, size_t len,
+                              uint8_t *err);
+size_t cubemx_transport_read(struct uxrCustomTransport *transport, uint8_t *buf, size_t len,
+                             int timeout, uint8_t *err);
 
 void *microros_allocate(size_t size, void *state);
 void microros_deallocate(void *pointer, void *state);
@@ -77,24 +79,22 @@ void *microros_zero_allocate(size_t number_of_elements, size_t size_of_element, 
  * To be called between the kernel initialization (osKernelInitialize)
  * and the kernel start (osKernelStart).
  */
-void uros_layer_init(void *transport_obj, int32_t (*pub_callback)(void), void (*sub_callback)(int))
-{
+void uros_layer_init(void *transport_obj, int32_t (*pub_callback)(void),
+                     void (*sub_callback)(void *, int), void *sub_args) {
     uros_task_args.transport_obj = transport_obj;
     uros_task_args.pub_callback = pub_callback;
     uros_task_args.sub_callback = sub_callback;
+    uros_task_args.sub_args = sub_args;
     uros_task_handle = osThreadNew(uros_layer_task, (void *)&uros_task_args, &uros_task_attr);
 }
 
 /**
  * @brief micro-ROS publisher timer callback
  */
-void publisher_timer_callback(rcl_timer_t *timer, int64_t last_call_time)
-{
+void publisher_timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
     rcl_ret_t rc;
-    if (timer != NULL)
-    {
-        if (uros_task_args.pub_callback != NULL)
-        {
+    if (timer != NULL) {
+        if (uros_task_args.pub_callback != NULL) {
             msg.data = uros_task_args.pub_callback();
             rc = rcl_publish(&publisher, &msg, NULL);
         }
@@ -104,21 +104,18 @@ void publisher_timer_callback(rcl_timer_t *timer, int64_t last_call_time)
 /**
  * @brief micro-ROS subscriber callback
  */
-void subscription_callback(const void *msgin)
-{
+void subscription_callback(const void *msgin) {
     // Cast received message to used type
     const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
-    if (uros_task_args.sub_callback != NULL)
-    {
-        uros_task_args.sub_callback((int)msg->data);
+    if (uros_task_args.sub_callback != NULL) {
+        uros_task_args.sub_callback(uros_task_args.sub_args, (int)msg->data);
     }
 }
 
 /**
  * @brief micro-ROS service callback
  */
-void service_callback(const void *request_msg, void *response_msg)
-{
+void service_callback(const void *request_msg, void *response_msg) {
     // Cast messages to expected types
     example_interfaces__srv__AddTwoInts_Request *req_in =
         (example_interfaces__srv__AddTwoInts_Request *)request_msg;
@@ -134,16 +131,11 @@ void service_callback(const void *request_msg, void *response_msg)
  * @brief micro-ROS layer task
  * @param transport
  */
-void uros_layer_task(void *pv_parameters)
-{
+void uros_layer_task(void *pv_parameters) {
     uros_task_args_t *task_args = (uros_task_args_t *)pv_parameters;
-    rmw_uros_set_custom_transport(
-        true,
-        (void *)task_args->transport_obj,
-        cubemx_transport_open,
-        cubemx_transport_close,
-        cubemx_transport_write,
-        cubemx_transport_read);
+    rmw_uros_set_custom_transport(true, (void *)task_args->transport_obj, cubemx_transport_open,
+                                  cubemx_transport_close, cubemx_transport_write,
+                                  cubemx_transport_read);
 
     rcl_allocator_t freertos_allocator = rcutils_get_zero_initialized_allocator();
     freertos_allocator.allocate = microros_allocate;
@@ -151,8 +143,7 @@ void uros_layer_task(void *pv_parameters)
     freertos_allocator.reallocate = microros_reallocate;
     freertos_allocator.zero_allocate = microros_zero_allocate;
 
-    if (!rcutils_set_default_allocator(&freertos_allocator))
-    {
+    if (!rcutils_set_default_allocator(&freertos_allocator)) {
         printf("Error on default allocators (line %d)\n", __LINE__);
     }
 
@@ -172,10 +163,7 @@ void uros_layer_task(void *pv_parameters)
 
     // publisher
     rclc_publisher_init_default(
-        &publisher,
-        &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-        "vizcc_publisher");
+        &publisher, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "vizcc_publisher");
 
     // executor
     rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
@@ -184,35 +172,23 @@ void uros_layer_task(void *pv_parameters)
     rclc_executor_set_timeout(&executor, RCL_MS_TO_NS(rcl_wait_timeout));
 
     // subscriber
-    rclc_subscription_init_default(
-        &subscriber,
-        &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-        "vel_cmd");
-    rclc_executor_add_subscription(
-        &executor,
-        &subscriber,
-        &msg_sub,
-        &subscription_callback,
-        ON_NEW_DATA);
+    rclc_subscription_init_default(&subscriber, &node,
+                                   ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "vel_cmd");
+    rclc_executor_add_subscription(&executor, &subscriber, &msg_sub, &subscription_callback,
+                                   ON_NEW_DATA);
 
     // timer for publisher
     rcl_timer_t publisher_timer;
-    const unsigned int timer_timeout = 1000; // ms
-    rc = rclc_timer_init_default(
-        &publisher_timer,
-        &support,
-        RCL_MS_TO_NS(timer_timeout),
-        publisher_timer_callback);
+    const unsigned int timer_timeout = 50; // ms
+    rc = rclc_timer_init_default(&publisher_timer, &support, RCL_MS_TO_NS(timer_timeout),
+                                 publisher_timer_callback);
     rclc_executor_add_timer(&executor, &publisher_timer);
 
     // service
     rcl_service_t service = rcl_get_zero_initialized_service();
-    rclc_service_init_default(
-        &service,
-        &node,
-        ROSIDL_GET_SRV_TYPE_SUPPORT(example_interfaces, srv, AddTwoInts),
-        "/addtwoints");
+    rclc_service_init_default(&service, &node,
+                              ROSIDL_GET_SRV_TYPE_SUPPORT(example_interfaces, srv, AddTwoInts),
+                              "/addtwoints");
     rclc_executor_add_service(&executor, &service, &req, &res, service_callback);
 
     // launch executor

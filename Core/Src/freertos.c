@@ -19,17 +19,21 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "FreeRTOS.h"
-#include "task.h"
-#include "main.h"
 #include "cmsis_os.h"
+#include "main.h"
+#include "stm32f4xx_hal_gpio.h"
+#include "task.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
-#include "micro_ros_layer.h"
 #include "encoder.h"
+#include "gpio.h"
 #include "hbridge.h"
+#include "micro_ros_layer.h"
+#include "pid.h"
 #include "usart.h"
+#include <stdint.h>
 
 /* USER CODE END Includes */
 
@@ -46,29 +50,12 @@ typedef StaticTask_t osStaticThreadDef_t;
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-#define RCCHECK(fn)                                                             \
-  {                                                                             \
-    rcl_ret_t temp_rc = fn;                                                     \
-    if ((temp_rc != RCL_RET_OK))                                                \
-    {                                                                           \
-      printf(                                                                   \
-          "Failed status on line %d: %d. Aborting.\n", __LINE__, (int)temp_rc); \
-      return 1;                                                                 \
-    }                                                                           \
-  }
-#define RCSOFTCHECK(fn)                                                           \
-  {                                                                               \
-    rcl_ret_t temp_rc = fn;                                                       \
-    if ((temp_rc != RCL_RET_OK))                                                  \
-    {                                                                             \
-      printf(                                                                     \
-          "Failed status on line %d: %d. Continuing.\n", __LINE__, (int)temp_rc); \
-    }                                                                             \
-  }
+
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
+pid_controller_t hpid1; /*!> PID controller 1 */
 
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
@@ -86,6 +73,7 @@ const osThreadAttr_t defaultTask_attributes = {
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
+void subscriber_callback_wrapper(void *sub_args, int value);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -98,40 +86,41 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
  * @param  None
  * @retval None
  */
-void MX_FREERTOS_Init(void)
-{
-  /* USER CODE BEGIN Init */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
-  encoder_init();
-  hbridge_init();
-  uros_layer_init((void *)&huart3, encoder_diff_value, hbridge_set_pwm);
-  /* USER CODE END Init */
-  /* USER CODE BEGIN Header */
-  /**
-   ******************************************************************************
-   * File Name          : freertos.c
-   * Description        : Code for freertos applications
-   ******************************************************************************
-   * @attention
-   *
-   * Copyright (c) 2024 STMicroelectronics.
-   * All rights reserved.
-   *
-   * This software is licensed under terms that can be found in the LICENSE file
-   * in the root directory of this software component.
-   * If no LICENSE file comes with this software, it is provided AS-IS.
-   *
-   ******************************************************************************
-   */
-  /* USER CODE END Header */
+void MX_FREERTOS_Init(void) {
+    /* USER CODE BEGIN Init */
+    defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+    hbridge_init();
+    encoder_init();
+    pid_controller_init(&hpid1);
+    uros_layer_init((void *)&huart3, encoder_diff_value, subscriber_callback_wrapper,
+                    (void *)&hpid1);
+    /* USER CODE END Init */
+    /* USER CODE BEGIN Header */
+    /**
+     ******************************************************************************
+     * File Name          : freertos.c
+     * Description        : Code for freertos applications
+     ******************************************************************************
+     * @attention
+     *
+     * Copyright (c) 2024 STMicroelectronics.
+     * All rights reserved.
+     *
+     * This software is licensed under terms that can be found in the LICENSE file
+     * in the root directory of this software component.
+     * If no LICENSE file comes with this software, it is provided AS-IS.
+     *
+     ******************************************************************************
+     */
+    /* USER CODE END Header */
 
-  /**
-   * @}
-   */
+    /**
+     * @}
+     */
 
-  /**
-   * @}
-   */
+    /**
+     * @}
+     */
 }
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -141,26 +130,24 @@ void MX_FREERTOS_Init(void)
  * @retval None
  */
 /* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
-{
-  /* USER CODE BEGIN StartDefaultTask */
+void StartDefaultTask(void *argument) {
+    /* USER CODE BEGIN StartDefaultTask */
+    int32_t pid_out = 0; // PID controller output
 
-  // Init encoder
-  // app_encoder_init(&henc1, (void *)&htim2);
-
-  // Init PWM channels
-  // HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
-  // TIM4->CCR1 = 65535;
-
-  /* Infinite loop */
-  for (;;)
-  {
-    osDelay(10);
-  }
-  /* USER CODE END StartDefaultTask */
+    /* Infinite loop */
+    for (;;) {
+        osDelay(50);
+        HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
+        pid_out = pid_controller_update(&hpid1, encoder_diff_value());
+        hbridge_set_pwm(pid_out);
+    }
+    /* USER CODE END StartDefaultTask */
 }
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
-
+void subscriber_callback_wrapper(void *sub_args, int value) {
+    pid_controller_t *hpid = (pid_controller_t *)sub_args;
+    pid_setpoint_update(hpid, value);
+}
 /* USER CODE END Application */
