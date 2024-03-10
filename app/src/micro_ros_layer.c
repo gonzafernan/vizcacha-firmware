@@ -16,12 +16,15 @@
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
 #include <rclc/rclc.h>
+#include <rclc_parameter/rclc_parameter.h>
 #include <rmw_microros/rmw_microros.h>
 #include <rmw_microxrcedds_c/config.h> // not sure why
 #include <std_msgs/msg/int32.h>
 #include <uxr/client/transport.h>
 
 #include "example_interfaces/srv/add_two_ints.h"
+#include "main.h"
+#include "stm32f4xx_hal_gpio.h"
 
 typedef StaticTask_t osStaticThreadDef_t;
 
@@ -50,6 +53,7 @@ const osThreadAttr_t uros_task_attr = {
 static uros_task_args_t uros_task_args;
 
 // micro-ROS private variables
+rclc_parameter_server_t param_server;
 rcl_publisher_t publisher;
 rcl_subscription_t subscriber;
 std_msgs__msg__Int32 msg;
@@ -115,16 +119,52 @@ void subscription_callback(const void *msgin) {
 /**
  * @brief micro-ROS service callback
  */
-void service_callback(const void *request_msg, void *response_msg) {
-    // Cast messages to expected types
-    example_interfaces__srv__AddTwoInts_Request *req_in =
-        (example_interfaces__srv__AddTwoInts_Request *)request_msg;
-    example_interfaces__srv__AddTwoInts_Response *res_in =
-        (example_interfaces__srv__AddTwoInts_Response *)response_msg;
+// void service_callback(const void *request_msg, void *response_msg) {
+//     // Cast messages to expected types
+//     example_interfaces__srv__AddTwoInts_Request *req_in =
+//         (example_interfaces__srv__AddTwoInts_Request *)request_msg;
+//     example_interfaces__srv__AddTwoInts_Response *res_in =
+//         (example_interfaces__srv__AddTwoInts_Response *)response_msg;
+//
+//     // Handle request message and set the response message values
+//     printf("Client requested sum of %d and %d.\n", (int)req_in->a, (int)req_in->b);
+//     res_in->sum = req_in->a + req_in->b;
+// }
 
-    // Handle request message and set the response message values
-    printf("Client requested sum of %d and %d.\n", (int)req_in->a, (int)req_in->b);
-    res_in->sum = req_in->a + req_in->b;
+bool on_parameter_changed(const Parameter *old_param, const Parameter *new_param, void *context) {
+    (void)context;
+
+    if (old_param == NULL && new_param == NULL) {
+        printf("Callback error, both parameters are NULL\n");
+        return false;
+    }
+
+    if (old_param == NULL) {
+        printf("Creating new parameter %s\n", new_param->name.data);
+    } else if (new_param == NULL) {
+        printf("Deleting parameter %s\n", old_param->name.data);
+    } else {
+        printf("Parameter %s modified.", old_param->name.data);
+        switch (old_param->value.type) {
+        case RCLC_PARAMETER_BOOL:
+            printf(" Old value: %d, New value: %d (bool)", old_param->value.bool_value,
+                   new_param->value.bool_value);
+            break;
+        case RCLC_PARAMETER_INT:
+            printf(" Old value: %lld, New value: %lld (int)", old_param->value.integer_value,
+                   new_param->value.integer_value);
+            break;
+        case RCLC_PARAMETER_DOUBLE:
+            printf(" Old value: %f, New value: %f (double)", old_param->value.double_value,
+                   new_param->value.double_value);
+            break;
+        default:
+            break;
+        }
+        printf("\n");
+    }
+
+    return true;
 }
 
 /**
@@ -161,15 +201,33 @@ void uros_layer_task(void *pv_parameters) {
     // node
     rclc_node_init_default(&node, "vizcc_node", "", &support);
 
+    // paramater server
+    rclc_parameter_server_init_default(&param_server, &node);
+
     // publisher
     rclc_publisher_init_default(
         &publisher, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "vizcc_publisher");
 
     // executor
     rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
-    rclc_executor_init(&executor, &support.context, 2, &allocator);
+    rclc_executor_init(&executor, &support.context, RCLC_EXECUTOR_PARAMETER_SERVER_HANDLES + 5,
+                       &allocator);
     unsigned int rcl_wait_timeout = 1000; // ms
     rclc_executor_set_timeout(&executor, RCL_MS_TO_NS(rcl_wait_timeout));
+
+    rclc_executor_add_parameter_server(&executor, &param_server, NULL);
+    rclc_add_parameter(&param_server, "pid_kp", RCLC_PARAMETER_DOUBLE);
+    rclc_parameter_set_double(&param_server, "pid_kp", 20.0);
+    rclc_add_parameter_description(&param_server, "pid_kp", "PID controller proportional gain",
+                                   "Only positive values");
+    rclc_add_parameter(&param_server, "pid_ki", RCLC_PARAMETER_DOUBLE);
+    rclc_parameter_set_double(&param_server, "pid_ki", 20.0);
+    rclc_add_parameter_description(&param_server, "pid_ki", "PID controller integral gain",
+                                   "Only positive values");
+    rclc_add_parameter(&param_server, "pid_kd", RCLC_PARAMETER_DOUBLE);
+    rclc_parameter_set_double(&param_server, "pid_kd", 20.0);
+    rclc_add_parameter_description(&param_server, "pid_kd", "PID controller derivative gain",
+                                   "Only positive values");
 
     // subscriber
     rclc_subscription_init_default(&subscriber, &node,
@@ -179,25 +237,26 @@ void uros_layer_task(void *pv_parameters) {
 
     // timer for publisher
     rcl_timer_t publisher_timer;
-    const unsigned int timer_timeout = 50; // ms
+    const unsigned int timer_timeout = 100; // ms
     rc = rclc_timer_init_default(&publisher_timer, &support, RCL_MS_TO_NS(timer_timeout),
                                  publisher_timer_callback);
     rclc_executor_add_timer(&executor, &publisher_timer);
 
     // service
-    rcl_service_t service = rcl_get_zero_initialized_service();
-    rclc_service_init_default(&service, &node,
-                              ROSIDL_GET_SRV_TYPE_SUPPORT(example_interfaces, srv, AddTwoInts),
-                              "/addtwoints");
-    rclc_executor_add_service(&executor, &service, &req, &res, service_callback);
+    // rcl_service_t service = rcl_get_zero_initialized_service();
+    // rclc_service_init_default(&service, &node,
+    //                           ROSIDL_GET_SRV_TYPE_SUPPORT(example_interfaces, srv, AddTwoInts),
+    //                           "/addtwoints");
+    // rclc_executor_add_service(&executor, &service, &req, &res, service_callback);
 
     // launch executor
     rclc_executor_prepare(&executor);
     rclc_executor_spin(&executor);
 
     // close micro-ROS service and node
-    rcl_service_fini(&service, &node);
+    // rcl_service_fini(&service, &node);
     rcl_publisher_fini(&publisher, &node);
     rcl_subscription_fini(&subscriber, &node);
+    rclc_parameter_server_fini(&param_server, &node);
     rcl_node_fini(&node);
 }

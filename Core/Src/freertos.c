@@ -45,7 +45,8 @@ typedef StaticTask_t osStaticThreadDef_t;
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define PI 3.14159
+#define PID_DT_MS 500
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -56,6 +57,7 @@ typedef StaticTask_t osStaticThreadDef_t;
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
 pid_controller_t hpid1; /*!> PID controller 1 */
+int32_t encoder_diff = 0;
 
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
@@ -74,6 +76,7 @@ const osThreadAttr_t defaultTask_attributes = {
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 void subscriber_callback_wrapper(void *sub_args, int value);
+int32_t publisher_callback_wrapper(void);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -91,8 +94,8 @@ void MX_FREERTOS_Init(void) {
     defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
     hbridge_init();
     encoder_init();
-    pid_controller_init(&hpid1);
-    uros_layer_init((void *)&huart3, encoder_diff_value, subscriber_callback_wrapper,
+    pid_controller_init(&hpid1, PID_DT_MS);
+    uros_layer_init((void *)&huart3, publisher_callback_wrapper, subscriber_callback_wrapper,
                     (void *)&hpid1);
     /* USER CODE END Init */
     /* USER CODE BEGIN Header */
@@ -132,22 +135,32 @@ void MX_FREERTOS_Init(void) {
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument) {
     /* USER CODE BEGIN StartDefaultTask */
-    int32_t pid_out = 0; // PID controller output
+    float pid_out = 0; // PID controller output
+    float vv_wheel = 0.0;
 
     /* Infinite loop */
     for (;;) {
-        osDelay(50);
-        HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
-        pid_out = pid_controller_update(&hpid1, encoder_diff_value());
-        hbridge_set_pwm(pid_out);
+        osDelay(PID_DT_MS);
+        encoder_diff = encoder_diff_value();
+        vv_wheel = ((float)encoder_diff) * (10.0 / 34.0) / PID_DT_MS;
+        pid_out = pid_controller_update(&hpid1, vv_wheel);
+        pid_out = -pid_out * 595.5;
+        hbridge_set_pwm((int32_t)pid_out);
     }
     /* USER CODE END StartDefaultTask */
 }
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
+
+int32_t publisher_callback_wrapper(void) {
+    float vv_wheel = ((float)encoder_diff) * (10.0 / 34.0) / PID_DT_MS;
+    return (int32_t)vv_wheel;
+}
+
 void subscriber_callback_wrapper(void *sub_args, int value) {
     pid_controller_t *hpid = (pid_controller_t *)sub_args;
-    pid_setpoint_update(hpid, value);
+    pid_setpoint_update(hpid, (float)value);
 }
+
 /* USER CODE END Application */
