@@ -78,6 +78,10 @@ const osThreadAttr_t defaultTask_attributes = {
 void subscriber_callback_wrapper(void *sub_args, int value);
 int32_t publisher_callback_wrapper(void);
 
+void pid_kp_update(double new_value);
+void pid_ki_update(double new_value);
+void pid_kd_update(double new_value);
+
 /* USER CODE END FunctionPrototypes */
 
 void StartDefaultTask(void *argument);
@@ -138,9 +142,19 @@ void StartDefaultTask(void *argument) {
     float pid_out = 0; // PID controller output
     float vv_wheel = 0.0;
 
+    uros_status_t uros_status;
+
+    uros_status = uros_parameter_enqueue_double("pid_kp", "PID controller proportional gain",
+                                                "Only positive values", 20.0, pid_kp_update);
+    uros_status = uros_parameter_enqueue_double("pid_ki", "PID controller integral gain",
+                                                "Only positive values", 20.0, pid_ki_update);
+    uros_status = uros_parameter_enqueue_double("pid_kd", "PID controller derivative gain",
+                                                "Only positive values", 20.0, pid_kd_update);
+
     /* Infinite loop */
     for (;;) {
         osDelay(PID_DT_MS);
+        HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
         encoder_diff = encoder_diff_value();
         vv_wheel = ((float)encoder_diff) * (10.0 / 34.0) / PID_DT_MS;
         pid_out = pid_controller_update(&hpid1, vv_wheel);
@@ -153,6 +167,13 @@ void StartDefaultTask(void *argument) {
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
 
+void error_handler(void) {
+    for (;;) {
+        HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+        osDelay(PID_DT_MS);
+    }
+}
+
 int32_t publisher_callback_wrapper(void) {
     float vv_wheel = ((float)encoder_diff) * (10.0 / 34.0) / PID_DT_MS;
     return (int32_t)vv_wheel;
@@ -161,6 +182,16 @@ int32_t publisher_callback_wrapper(void) {
 void subscriber_callback_wrapper(void *sub_args, int value) {
     pid_controller_t *hpid = (pid_controller_t *)sub_args;
     pid_setpoint_update(hpid, (float)value);
+}
+
+void pid_kp_update(double new_value) {
+    // HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
+}
+void pid_ki_update(double new_value) {
+    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+}
+void pid_kd_update(double new_value) {
+    HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
 }
 
 /* USER CODE END Application */
