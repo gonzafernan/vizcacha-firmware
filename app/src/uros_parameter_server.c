@@ -82,7 +82,9 @@ bool on_parameter_changed(const Parameter *old_param, const Parameter *new_param
                    new_param->value.double_value);
             param_double_callback_t on_change_double_callback;
             on_change_double_callback = get_on_change_callback(new_param->name.data);
-            on_change_double_callback(new_param->value.double_value);
+            if (NULL != on_change_double_callback) {
+                on_change_double_callback(new_param->value.double_value);
+            }
             break;
         default:
             break;
@@ -116,14 +118,15 @@ uros_status_t uros_parameter_server_init(rcl_node_t *node, rclc_executor_t *exec
  */
 uros_status_t uros_parameter_server_deinit(rcl_node_t *node) {
     rclc_parameter_server_fini(&param_server, node);
+    // TODO: parameters array cleaning
 }
 
 /**
  * @brief Enqueue double parameter dor micro-ROS parameter server
  */
-uros_status_t uros_parameter_enqueue_double(const char *param_name, const char *param_description,
-                                            const char *param_limits, double initial_value,
-                                            param_double_callback_t on_change_callback) {
+uros_status_t uros_parameter_queue_double(const char *param_name, const char *param_description,
+                                          const char *param_limits, double initial_value,
+                                          param_double_callback_t on_change_callback) {
     _param_double_w_head++;
     if (_param_double_w_head > UROS_PARAM_SERVER_MAX_DOUBLES) {
         return UROS_ERROR;
@@ -134,6 +137,9 @@ uros_status_t uros_parameter_enqueue_double(const char *param_name, const char *
             xQueueCreate(UROS_PARAM_SERVER_MAX_DOUBLES, sizeof(param_double_reg_t *));
     }
 
+    if (NULL == _param_double_reg_queue) {
+        return UROS_ERROR;
+    }
     _param_double_reg[_param_double_w_head - 1].name = param_name;
     _param_double_reg[_param_double_w_head - 1].description = param_description;
     _param_double_reg[_param_double_w_head - 1].limits = param_limits;

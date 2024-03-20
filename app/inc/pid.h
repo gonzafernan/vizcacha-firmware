@@ -45,6 +45,7 @@ typedef struct {
 } pid_controller_t;
 
 void pid_controller_init(pid_controller_t *pid, float dt);
+void pid_kp_update(pid_controller_t *pid, float new_value);
 void pid_setpoint_update(pid_controller_t *pid, float new_value);
 float pid_controller_update(pid_controller_t *pid, float input);
 

@@ -28,6 +28,7 @@
 /* USER CODE BEGIN Includes */
 
 #include "encoder.h"
+#include "filter.h"
 #include "gpio.h"
 #include "hbridge.h"
 #include "micro_ros_layer.h"
@@ -76,9 +77,8 @@ const osThreadAttr_t defaultTask_attributes = {
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 void subscriber_callback_wrapper(void *sub_args, int value);
-int32_t publisher_callback_wrapper(void);
 
-void pid_kp_update(double new_value);
+void pid_kp_update_wrapper(double new_value);
 void pid_ki_update(double new_value);
 void pid_kd_update(double new_value);
 
@@ -99,8 +99,7 @@ void MX_FREERTOS_Init(void) {
     hbridge_init();
     encoder_init();
     pid_controller_init(&hpid1, PID_DT_MS);
-    uros_layer_init((void *)&huart3, publisher_callback_wrapper, subscriber_callback_wrapper,
-                    (void *)&hpid1);
+    uros_layer_init((void *)&huart3, subscriber_callback_wrapper, (void *)&hpid1);
     /* USER CODE END Init */
     /* USER CODE BEGIN Header */
     /**
@@ -143,23 +142,24 @@ void StartDefaultTask(void *argument) {
     float vv_wheel = 0.0;
 
     uros_status_t uros_status;
+    const char *topic_name = "encoder1/vel_filtered";
 
-    uros_status = uros_parameter_enqueue_double("pid_kp", "PID controller proportional gain",
-                                                "Only positive values", 20.0, pid_kp_update);
-    uros_status = uros_parameter_enqueue_double("pid_ki", "PID controller integral gain",
-                                                "Only positive values", 20.0, pid_ki_update);
-    uros_status = uros_parameter_enqueue_double("pid_kd", "PID controller derivative gain",
-                                                "Only positive values", 20.0, pid_kd_update);
-
+    uros_status = uros_parameter_queue_double("pid_kp", "PID controller proportional gain",
+                                              "Only positive values", 20.0, pid_kp_update_wrapper);
+    uros_status = uros_parameter_queue_double("pid_ki", "PID controller integral gain",
+                                              "Only positive values", 20.0, pid_ki_update);
+    uros_status = uros_parameter_queue_double("pid_kd", "PID controller derivative gain",
+                                              "Only positive values", 20.0, pid_kd_update);
+    uros_publisher_register_float32(topic_name);
     /* Infinite loop */
     for (;;) {
         osDelay(PID_DT_MS);
-        HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
         encoder_diff = encoder_diff_value();
         vv_wheel = ((float)encoder_diff) * (10.0 / 34.0) / PID_DT_MS;
         pid_out = pid_controller_update(&hpid1, vv_wheel);
-        pid_out = -pid_out * 595.5;
         hbridge_set_pwm((int32_t)pid_out);
+        uros_publisher_queue_float32_value("encoder1/vel_filtered", &vv_wheel);
+        HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
     }
     /* USER CODE END StartDefaultTask */
 }
@@ -167,25 +167,13 @@ void StartDefaultTask(void *argument) {
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
 
-void error_handler(void) {
-    for (;;) {
-        HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-        osDelay(PID_DT_MS);
-    }
-}
-
-int32_t publisher_callback_wrapper(void) {
-    float vv_wheel = ((float)encoder_diff) * (10.0 / 34.0) / PID_DT_MS;
-    return (int32_t)vv_wheel;
-}
-
 void subscriber_callback_wrapper(void *sub_args, int value) {
     pid_controller_t *hpid = (pid_controller_t *)sub_args;
     pid_setpoint_update(hpid, (float)value);
 }
 
-void pid_kp_update(double new_value) {
-    // HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
+void pid_kp_update_wrapper(double new_value) {
+    pid_kp_update(&hpid1, (float)new_value);
 }
 void pid_ki_update(double new_value) {
     HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);

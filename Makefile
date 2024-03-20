@@ -37,10 +37,12 @@ BUILD_DIR = build
 # C sources
 C_SOURCES =  \
 app/src/micro_ros_layer.c \
+app/src/uros_publisher.c \
 app/src/uros_parameter_server.c \
 app/src/encoder.c \
 app/src/hbridge.c \
 app/src/pid.c \
+app/src/filter.c \
 Core/Src/main.c \
 Core/Src/syscalls.c \
 Core/Src/gpio.c \

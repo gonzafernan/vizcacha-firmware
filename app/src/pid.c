@@ -19,8 +19,8 @@ void pid_controller_init(pid_controller_t *pid, float dt) {
     pid->setpoint = 0;
     pid->output = 0.0;
 
-    pid->lim_max = 110.0;
-    pid->lim_min = -110.0;
+    pid->lim_max = +65535;
+    pid->lim_min = -65535;
 
     pid->lim_max_int = 110.0;
     pid->lim_min_int = -110.0;
@@ -42,6 +42,10 @@ void pid_setpoint_update(pid_controller_t *pid, float new_value) {
     pid->setpoint = new_value;
 }
 
+void pid_kp_update(pid_controller_t *pid, float new_value) {
+    pid->kp = new_value;
+}
+
 /**
  * @brief PID controller update
  */
@@ -60,7 +64,7 @@ float pid_controller_update(pid_controller_t *pid, float input) {
     float error = pid->setpoint - input;
 
     // proportional controller
-    pid->output = 5 * error;
+    pid->output = pid->kp * error;
 
     // proportional-integral controller
     // float kp = 0.9 * (zn_t / zn_l);

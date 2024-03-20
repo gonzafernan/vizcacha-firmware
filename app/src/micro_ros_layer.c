@@ -18,6 +18,7 @@
 // #include <rclc_parameter/rclc_parameter.h>
 #include <rmw_microros/rmw_microros.h>
 #include <rmw_microxrcedds_c/config.h> // not sure why
+#include <std_msgs/msg/float32.h>
 #include <std_msgs/msg/int32.h>
 #include <uxr/client/transport.h>
 
@@ -25,13 +26,11 @@
 #include "main.h"
 #include "rcl/types.h"
 #include "rclc_parameter/rclc_parameter.h"
-#include "stm32f4xx_hal_gpio.h"
 
 typedef StaticTask_t osStaticThreadDef_t;
 
 typedef struct {
     void *transport_obj;
-    int32_t (*pub_callback)(void);
     void (*sub_callback)(void *, int);
     void *sub_args;
 
@@ -54,10 +53,10 @@ const osThreadAttr_t uros_task_attr = {
 static uros_task_args_t uros_task_args;
 
 // micro-ROS private variables
-rcl_publisher_t publisher;
+rcl_node_t node;
 rcl_subscription_t subscriber;
-std_msgs__msg__Int32 msg;
 std_msgs__msg__Int32 msg_sub;
+std_msgs__msg__Float32 msg_pub;
 
 example_interfaces__srv__AddTwoInts_Request req;
 example_interfaces__srv__AddTwoInts_Response res;
@@ -83,10 +82,8 @@ void *microros_zero_allocate(size_t number_of_elements, size_t size_of_element, 
  * To be called between the kernel initialization (osKernelInitialize)
  * and the kernel start (osKernelStart).
  */
-void uros_layer_init(void *transport_obj, int32_t (*pub_callback)(void),
-                     void (*sub_callback)(void *, int), void *sub_args) {
+void uros_layer_init(void *transport_obj, void (*sub_callback)(void *, int), void *sub_args) {
     uros_task_args.transport_obj = transport_obj;
-    uros_task_args.pub_callback = pub_callback;
     uros_task_args.sub_callback = sub_callback;
     uros_task_args.sub_args = sub_args;
     uros_task_handle = osThreadNew(uros_layer_task, (void *)&uros_task_args, &uros_task_attr);
@@ -96,13 +93,10 @@ void uros_layer_init(void *transport_obj, int32_t (*pub_callback)(void),
  * @brief micro-ROS publisher timer callback
  */
 void publisher_timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
-    rcl_ret_t rc;
     if (timer != NULL) {
-        if (uros_task_args.pub_callback != NULL) {
-            msg.data = uros_task_args.pub_callback();
-            rc = rcl_publish(&publisher, &msg, NULL);
-        }
         uros_parameter_register_double();
+        uros_publisher_init(&node);
+        uros_publisher_publish(&node);
     }
 }
 
@@ -155,20 +149,13 @@ void uros_layer_task(void *pv_parameters) {
     /** @todo Add RCC check for error handling */
     rclc_support_t support;
     rcl_allocator_t allocator;
-    rcl_node_t node;
     rcl_ret_t rc;
-
-    msg.data = 0;
 
     allocator = rcl_get_default_allocator();
     rclc_support_init(&support, 0, NULL, &allocator);
 
     // node
     rclc_node_init_default(&node, "vizcc_node", "", &support);
-
-    // publisher
-    rclc_publisher_init_default(
-        &publisher, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "vizcc_publisher");
 
     // executor
     rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
@@ -188,7 +175,7 @@ void uros_layer_task(void *pv_parameters) {
 
     // timer for publisher
     rcl_timer_t publisher_timer;
-    const unsigned int timer_timeout = 100; // ms
+    const unsigned int timer_timeout = 500; // ms
     rc = rclc_timer_init_default(&publisher_timer, &support, RCL_MS_TO_NS(timer_timeout),
                                  publisher_timer_callback);
     rclc_executor_add_timer(&executor, &publisher_timer);
@@ -206,7 +193,7 @@ void uros_layer_task(void *pv_parameters) {
 
     // close micro-ROS service and node
     // rcl_service_fini(&service, &node);
-    rcl_publisher_fini(&publisher, &node);
+    uros_publisher_close(&node);
     rcl_subscription_fini(&subscriber, &node);
     // rclc_parameter_server_fini(&param_server, &node);
     uros_parameter_server_deinit(&node);
