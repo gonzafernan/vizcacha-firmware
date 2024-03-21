@@ -175,7 +175,7 @@ void uros_layer_task(void *pv_parameters) {
 
     // timer for publisher
     rcl_timer_t publisher_timer;
-    const unsigned int timer_timeout = 500; // ms
+    const unsigned int timer_timeout = 20; // ms
     rc = rclc_timer_init_default(&publisher_timer, &support, RCL_MS_TO_NS(timer_timeout),
                                  publisher_timer_callback);
     rclc_executor_add_timer(&executor, &publisher_timer);

@@ -22,8 +22,8 @@ void pid_controller_init(pid_controller_t *pid, float dt) {
     pid->lim_max = +65535;
     pid->lim_min = -65535;
 
-    pid->lim_max_int = 110.0;
-    pid->lim_min_int = -110.0;
+    pid->lim_max_int = 20000.0;
+    pid->lim_min_int = -20000.0;
 
     pid->dt = dt;
     pid->tau = 0.2;
@@ -64,13 +64,13 @@ float pid_controller_update(pid_controller_t *pid, float input) {
     float error = pid->setpoint - input;
 
     // proportional controller
-    pid->output = pid->kp * error;
+    float proportional = pid->kp * error;
 
     // proportional-integral controller
     // float kp = 0.9 * (zn_t / zn_l);
     // float ki = zn_l / 0.3;
     // float proportional = kp * error;
-    // pid->integrate += 0.5 * ki * pid->dt * (error + pid->prev_error);
+    pid->integrate += 0.5 * pid->ki * pid->dt * (error + pid->prev_error);
 
     // integral path saturation: anti-wind-up via integrator clamping
     // if (pid->integrate > pid->lim_max) {
@@ -86,7 +86,7 @@ float pid_controller_update(pid_controller_t *pid, float input) {
     //
     // pid->output = proportional + pid->integrate + pid->integrate;
     //
-    // pid->output = proportional + pid->integrate;
+    pid->output = proportional + pid->integrate;
 
     // clamp controller output
     if (pid->output > pid->lim_max) {

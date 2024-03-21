@@ -47,7 +47,7 @@ typedef StaticTask_t osStaticThreadDef_t;
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define PI 3.14159
-#define PID_DT_MS 500
+#define PID_DT_MS 20
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -140,9 +140,9 @@ void StartDefaultTask(void *argument) {
     /* USER CODE BEGIN StartDefaultTask */
     float pid_out = 0; // PID controller output
     float vv_wheel = 0.0;
+    float vv_wheel_filtered = 0.0;
 
     uros_status_t uros_status;
-    const char *topic_name = "encoder1/vel_filtered";
 
     uros_status = uros_parameter_queue_double("pid_kp", "PID controller proportional gain",
                                               "Only positive values", 20.0, pid_kp_update_wrapper);
@@ -150,15 +150,22 @@ void StartDefaultTask(void *argument) {
                                               "Only positive values", 20.0, pid_ki_update);
     uros_status = uros_parameter_queue_double("pid_kd", "PID controller derivative gain",
                                               "Only positive values", 20.0, pid_kd_update);
-    uros_publisher_register_float32(topic_name);
+    uros_publisher_register_float32("encoder1/vel_raw");
+    uros_publisher_register_float32("encoder1/vel_filtered");
+
+    filter_iir_t encoder_filter;
+    filter_init(&encoder_filter);
+
     /* Infinite loop */
     for (;;) {
         osDelay(PID_DT_MS);
         encoder_diff = encoder_diff_value();
         vv_wheel = ((float)encoder_diff) * (10.0 / 34.0) / PID_DT_MS;
-        pid_out = pid_controller_update(&hpid1, vv_wheel);
+        vv_wheel_filtered = filter_update(&encoder_filter, vv_wheel);
+        pid_out = pid_controller_update(&hpid1, vv_wheel_filtered);
         hbridge_set_pwm((int32_t)pid_out);
-        uros_publisher_queue_float32_value("encoder1/vel_filtered", &vv_wheel);
+        uros_publisher_queue_float32_value("encoder1/vel_raw", &vv_wheel);
+        uros_publisher_queue_float32_value("encoder1/vel_filtered", &vv_wheel_filtered);
         HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
     }
     /* USER CODE END StartDefaultTask */
