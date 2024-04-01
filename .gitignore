@@ -1,3 +1,5 @@
+.vscode
 .mxproject
+.cache/
 /build/
-
+compile_commands.json
