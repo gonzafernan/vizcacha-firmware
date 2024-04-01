@@ -63,8 +63,8 @@ void MX_GPIO_Init(void) {
     __HAL_RCC_GPIOH_CLK_ENABLE();
     __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_GPIOB_CLK_ENABLE();
-    __HAL_RCC_GPIOD_CLK_ENABLE();
     __HAL_RCC_GPIOG_CLK_ENABLE();
+    __HAL_RCC_GPIOD_CLK_ENABLE();
 
     /*Configure GPIO pin Output Level */
     HAL_GPIO_WritePin(L298N_IN2_GPIO_Port, L298N_IN2_Pin, GPIO_PIN_RESET);
@@ -73,10 +73,10 @@ void MX_GPIO_Init(void) {
     HAL_GPIO_WritePin(GPIOB, LD1_Pin | LD3_Pin | LD2_Pin, GPIO_PIN_RESET);
 
     /*Configure GPIO pin Output Level */
-    HAL_GPIO_WritePin(L298N_IN1_GPIO_Port, L298N_IN1_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOG, L298N_IN3_Pin | L298N_IN4_Pin | USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
 
     /*Configure GPIO pin Output Level */
-    HAL_GPIO_WritePin(USB_PowerSwitchOn_GPIO_Port, USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(L298N_IN1_GPIO_Port, L298N_IN1_Pin, GPIO_PIN_RESET);
 
     /*Configure GPIO pin : PtPin */
     GPIO_InitStruct.Pin = L298N_IN2_Pin;
@@ -114,6 +114,13 @@ void MX_GPIO_Init(void) {
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+    /*Configure GPIO pins : PGPin PGPin PGPin */
+    GPIO_InitStruct.Pin = L298N_IN3_Pin | L298N_IN4_Pin | USB_PowerSwitchOn_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
+
     /*Configure GPIO pin : PtPin */
     GPIO_InitStruct.Pin = RMII_TXD1_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
@@ -128,13 +135,6 @@ void MX_GPIO_Init(void) {
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(L298N_IN1_GPIO_Port, &GPIO_InitStruct);
-
-    /*Configure GPIO pin : PtPin */
-    GPIO_InitStruct.Pin = USB_PowerSwitchOn_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(USB_PowerSwitchOn_GPIO_Port, &GPIO_InitStruct);
 
     /*Configure GPIO pin : PtPin */
     GPIO_InitStruct.Pin = USB_OverCurrent_Pin;

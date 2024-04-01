@@ -6,6 +6,7 @@
 
 #include "pid.h"
 #include <stdint.h>
+#include <wchar.h>
 
 /**
  * @brief PID controller initialization
@@ -22,14 +23,14 @@ void pid_controller_init(pid_controller_t *pid, float dt) {
     pid->lim_max = +65535;
     pid->lim_min = -65535;
 
-    pid->lim_max_int = 20000.0;
-    pid->lim_min_int = -20000.0;
+    pid->lim_max_int = 65000.0;
+    pid->lim_min_int = -65000.0;
 
     pid->dt = dt;
-    pid->tau = 0.2;
+    pid->tau = 0.0064;
 
-    pid->kp = 1.0;
-    pid->ki = 166.7;
+    pid->kp = 800.0;
+    pid->ki = 0.0;
     pid->kp = 0.0;
 }
 
@@ -70,23 +71,30 @@ float pid_controller_update(pid_controller_t *pid, float input) {
     // float kp = 0.9 * (zn_t / zn_l);
     // float ki = zn_l / 0.3;
     // float proportional = kp * error;
-    pid->integrate += 0.5 * pid->ki * pid->dt * (error + pid->prev_error);
+    // pid->integrate += 0.5 * pid->ki * pid->dt * (error + pid->prev_error);
+    pid->integrate += pid->ki * pid->dt * error;
 
     // integral path saturation: anti-wind-up via integrator clamping
-    // if (pid->integrate > pid->lim_max) {
-    //     pid->integrate = pid->lim_max;
-    // }
-    // if (pid->integrate < pid->lim_min) {
-    //     pid->integrate = pid->lim_min;
-    // }
-    //
-    // pid->derivate = -(2.0f * pid->kd * (input - pid->prev_input) +
-    //                   (2.0f * pid->tau - pid->dt) * pid->derivate) /
-    //                 (2.0f * pid->tau + pid->dt);
-    //
+    if (pid->integrate > pid->lim_max_int) {
+        pid->integrate = pid->lim_max_int;
+    }
+    if (pid->integrate < pid->lim_min_int) {
+        pid->integrate = pid->lim_min_int;
+    }
+
+    pid->derivate = -(2.0f * pid->kd * (input - pid->prev_input) +
+                      (2.0f * pid->tau - pid->dt) * pid->derivate) /
+                    (2.0f * pid->tau + pid->dt);
+
+    if (pid->ki == 0) {
+        pid->integrate = 0;
+    }
+    if (pid->kd == 0) {
+        pid->derivate = 0;
+    }
+
     // pid->output = proportional + pid->integrate + pid->integrate;
-    //
-    pid->output = proportional + pid->integrate;
+    pid->output = proportional + pid->integrate + pid->derivate;
 
     // clamp controller output
     if (pid->output > pid->lim_max) {
