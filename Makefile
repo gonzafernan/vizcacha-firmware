@@ -38,6 +38,7 @@ BUILD_DIR = build
 C_SOURCES =  \
 app/src/micro_ros_layer.c \
 app/src/uros_publisher.c \
+app/src/uros_subscriber.c \
 app/src/uros_parameter_server.c \
 app/src/encoder.c \
 app/src/hbridge.c \

@@ -15,30 +15,20 @@
 #include <rcl/error_handling.h> /** @todo To use error handling */
 #include <rcl/rcl.h>
 #include <rclc/rclc.h>
-// #include <rclc_parameter/rclc_parameter.h>
 #include <rmw_microros/rmw_microros.h>
 #include <rmw_microxrcedds_c/config.h> // not sure why
 #include <std_msgs/msg/float32.h>
 #include <std_msgs/msg/int32.h>
 #include <uxr/client/transport.h>
 
-#include "example_interfaces/srv/add_two_ints.h"
-#include "main.h"
+// #include "example_interfaces/srv/add_two_ints.h"
 #include "rcl/types.h"
 #include "rclc_parameter/rclc_parameter.h"
 
 typedef StaticTask_t osStaticThreadDef_t;
 
-typedef struct {
-    void *transport_obj;
-    void (*sub_callback)(void *, int);
-    void *sub_args;
-
-} uros_task_args_t;
-
 osThreadId_t uros_task_handle;
 
-// RTOS private variables
 /*!> micro-ROS task stack 3000 words * 4 bytes = 12 kB > 10 kB requirement */
 uint32_t uros_task_buffer[3000];
 osStaticThreadDef_t uros_task_control_block;
@@ -50,16 +40,13 @@ const osThreadAttr_t uros_task_attr = {
     .stack_size = sizeof(uros_task_buffer),
     .priority = (osPriority_t)osPriorityNormal,
 };
-static uros_task_args_t uros_task_args;
 
 // micro-ROS private variables
 rcl_node_t node;
-rcl_subscription_t subscriber;
-std_msgs__msg__Int32 msg_sub;
-std_msgs__msg__Float32 msg_pub;
+rclc_executor_t executor;
 
-example_interfaces__srv__AddTwoInts_Request req;
-example_interfaces__srv__AddTwoInts_Response res;
+// example_interfaces__srv__AddTwoInts_Request req;
+// example_interfaces__srv__AddTwoInts_Response res;
 
 // RTOS private function prototypes
 void uros_layer_task(void *pv_parameters);
@@ -81,33 +68,21 @@ void *microros_zero_allocate(size_t number_of_elements, size_t size_of_element, 
  * @brief micro-ROS layer task creation
  * To be called between the kernel initialization (osKernelInitialize)
  * and the kernel start (osKernelStart).
+ * @param transport_obj transport object (e.g. USART handle)
  */
-void uros_layer_init(void *transport_obj, void (*sub_callback)(void *, int), void *sub_args) {
-    uros_task_args.transport_obj = transport_obj;
-    uros_task_args.sub_callback = sub_callback;
-    uros_task_args.sub_args = sub_args;
-    uros_task_handle = osThreadNew(uros_layer_task, (void *)&uros_task_args, &uros_task_attr);
+void uros_layer_init(void *transport_obj) {
+    uros_task_handle = osThreadNew(uros_layer_task, transport_obj, &uros_task_attr);
 }
 
 /**
  * @brief micro-ROS publisher timer callback
  */
-void publisher_timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
+void uros_timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
     if (timer != NULL) {
         uros_parameter_register_double();
         uros_publisher_init(&node);
         uros_publisher_publish(&node);
-    }
-}
-
-/**
- * @brief micro-ROS subscriber callback
- */
-void subscription_callback(const void *msgin) {
-    // Cast received message to used type
-    const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
-    if (uros_task_args.sub_callback != NULL) {
-        uros_task_args.sub_callback(uros_task_args.sub_args, (int)msg->data);
+        uros_subscriber_init(&node, &executor);
     }
 }
 
@@ -130,9 +105,8 @@ void subscription_callback(const void *msgin) {
  * @brief micro-ROS layer task
  * @param transport
  */
-void uros_layer_task(void *pv_parameters) {
-    uros_task_args_t *task_args = (uros_task_args_t *)pv_parameters;
-    rmw_uros_set_custom_transport(true, (void *)task_args->transport_obj, cubemx_transport_open,
+void uros_layer_task(void *transport_obj) {
+    rmw_uros_set_custom_transport(true, transport_obj, cubemx_transport_open,
                                   cubemx_transport_close, cubemx_transport_write,
                                   cubemx_transport_read);
 
@@ -158,7 +132,7 @@ void uros_layer_task(void *pv_parameters) {
     rclc_node_init_default(&node, "vizcc_node", "", &support);
 
     // executor
-    rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
+    executor = rclc_executor_get_zero_initialized_executor();
     rclc_executor_init(&executor, &support.context, RCLC_EXECUTOR_PARAMETER_SERVER_HANDLES + 5,
                        &allocator);
     unsigned int rcl_wait_timeout = 1000; // ms
@@ -167,17 +141,11 @@ void uros_layer_task(void *pv_parameters) {
     // paramater server
     uros_parameter_server_init(&node, &executor);
 
-    // subscriber
-    rclc_subscription_init_default(&subscriber, &node,
-                                   ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "vel_cmd");
-    rclc_executor_add_subscription(&executor, &subscriber, &msg_sub, &subscription_callback,
-                                   ON_NEW_DATA);
-
     // timer for publisher
     rcl_timer_t publisher_timer;
     const unsigned int timer_timeout = 20; // ms
     rc = rclc_timer_init_default(&publisher_timer, &support, RCL_MS_TO_NS(timer_timeout),
-                                 publisher_timer_callback);
+                                 uros_timer_callback);
     rclc_executor_add_timer(&executor, &publisher_timer);
 
     // service
@@ -194,8 +162,7 @@ void uros_layer_task(void *pv_parameters) {
     // close micro-ROS service and node
     // rcl_service_fini(&service, &node);
     uros_publisher_close(&node);
-    rcl_subscription_fini(&subscriber, &node);
-    // rclc_parameter_server_fini(&param_server, &node);
+    uros_subscriber_close(&node);
     uros_parameter_server_deinit(&node);
     rcl_node_fini(&node);
 }

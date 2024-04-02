@@ -17,14 +17,14 @@
 #include <string.h>
 
 /**
- * @brief Maximum number of double parameters in micro-ROS parameter server
+ * @brief Maximum number of float32 publishers
  */
 #define UROS_PUBLISHER_MAX_FLOAT32 10
 
 #define UROS_PUBLISHER_FLOAT32_BUFFER_SIZE 5 /*!> Float32 publisher FIFO size */
 
 /**
- * @brief micro-ROS double parameter register
+ * @brief micro-ROS double publisher register
  */
 typedef struct {
     rcl_publisher_t publisher; /*!> micro-ROS publisher */
@@ -34,8 +34,8 @@ typedef struct {
 } publisher_float32_reg_t;
 
 static publisher_float32_reg_t
-    _publisher_float32_reg[UROS_PUBLISHER_MAX_FLOAT32]; /*!> Array of double publishers */
-static uint8_t _publisher_float32_w_head = 0;           /*!> Index for double parameters register */
+    _publisher_float32_reg[UROS_PUBLISHER_MAX_FLOAT32]; /*!> Array of float32 publishers */
+static uint8_t _publisher_float32_w_head = 0; /*!> Index for float32 publishers register */
 std_msgs__msg__Float32 msg_float32;
 
 /**

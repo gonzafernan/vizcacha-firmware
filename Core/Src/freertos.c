@@ -35,6 +35,7 @@
 #include "pid.h"
 #include "tim.h"
 #include "usart.h"
+#include <std_msgs/msg/float32.h>
 #include <stdint.h>
 
 /* USER CODE END Includes */
@@ -81,7 +82,8 @@ const osThreadAttr_t defaultTask_attributes = {
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
-void subscriber_callback_wrapper(void *sub_args, int value);
+void pid1_setpoint_callback(const void *msgin);
+void pid2_setpoint_callback(const void *msgin);
 
 void pid_kp_update_wrapper(double new_value);
 void pid_ki_update(double new_value);
@@ -126,7 +128,7 @@ void MX_FREERTOS_Init(void) {
     pid_controller_init(&hpid1, PID_DT_MS);
     pid_controller_init(&hpid2, PID_DT_MS);
 
-    uros_layer_init((void *)&huart3, subscriber_callback_wrapper, (void *)&hpid1);
+    uros_layer_init((void *)&huart3);
     /* USER CODE END Init */
     /* USER CODE BEGIN Header */
     /**
@@ -187,6 +189,9 @@ void StartDefaultTask(void *argument) {
     uros_publisher_register_float32("encoder2/vel_raw");
     uros_publisher_register_float32("encoder2/vel_filtered");
 
+    uros_subscriber_register_float32("wheel1/vel_cmd", pid1_setpoint_callback);
+    uros_subscriber_register_float32("wheel2/vel_cmd", pid2_setpoint_callback);
+
     filter_iir_t enc1_filter, enc2_filter;
     filter_init(&enc1_filter);
     filter_init(&enc2_filter);
@@ -221,9 +226,14 @@ void StartDefaultTask(void *argument) {
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
 
-void subscriber_callback_wrapper(void *sub_args, int value) {
-    pid_controller_t *hpid = (pid_controller_t *)sub_args;
-    pid_setpoint_update(hpid, (float)value);
+void pid1_setpoint_callback(const void *msgin) {
+    std_msgs__msg__Float32 *msg = (std_msgs__msg__Float32 *)msgin;
+    pid_setpoint_update(&hpid1, (float)msg->data);
+}
+
+void pid2_setpoint_callback(const void *msgin) {
+    std_msgs__msg__Float32 *msg = (std_msgs__msg__Float32 *)msgin;
+    pid_setpoint_update(&hpid2, (float)msg->data);
 }
 
 void pid_kp_update_wrapper(double new_value) {

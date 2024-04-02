@@ -19,15 +19,7 @@ typedef enum { UROS_OK, UROS_ERROR } uros_status_t;
 
 typedef void (*param_double_callback_t)(double); /*!> Double parameter callback for update */
 
-/**
- * @brief micro-ROS layer task creation
- * To be called between the kernel initialization (osKernelInitialize)
- * and the kernel start (osKernelStart).
- * @param transport_obj transport object (e.g. USART handle)
- * @param pub_callback publisher callback
- * @param sub_callback subscriber callback
- */
-void uros_layer_init(void *transport_obj, void (*sub_callback)(void *, int), void *sub_args);
+void uros_layer_init(void *transport_obj);
 
 // micro-ROS publisher
 void uros_publisher_init(rcl_node_t *node);
@@ -35,6 +27,12 @@ uros_status_t uros_publisher_register_float32(const char *publisher_name);
 uros_status_t uros_publisher_queue_float32_value(const char *publisher_name, float *value);
 uros_status_t uros_publisher_publish(rcl_node_t *node);
 uros_status_t uros_publisher_close(rcl_node_t *node);
+
+// micro-ROS subscriber
+void uros_subscriber_init(rcl_node_t *node, rclc_executor_t *executor);
+uros_status_t uros_subscriber_register_float32(const char *subscriber_name,
+                                               void (*sub_callback)(const void *));
+uros_status_t uros_subscriber_close(rcl_node_t *node);
 
 // micro-ROS parameter server APIs
 rclc_parameter_server_t *uros_parameter_server_get(void);
