@@ -1,10 +1,10 @@
 /**
- * @file micro_ros_layer.c
+ * @file uros_layer.c
  * @brief Micro-ROS application layer
  * @author Gonzalo G. Fernandez
  */
 
-#include "micro_ros_layer.h"
+#include "uros_layer.h"
 
 #include "FreeRTOS.h"
 #include "cmsis_os.h"

@@ -1,5 +1,5 @@
 /**
- * @file micro_ros_layer.h
+ * @file uros_layer.h
  * @brief Micro-ROS application layer
  * @author Gonzalo G. Fernandez
  */
