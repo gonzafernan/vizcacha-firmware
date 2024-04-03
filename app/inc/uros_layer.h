@@ -31,7 +31,8 @@ uros_status_t uros_publisher_close(rcl_node_t *node);
 // micro-ROS subscriber
 void uros_subscriber_init(rcl_node_t *node, rclc_executor_t *executor);
 uros_status_t uros_subscriber_register_float32(const char *subscriber_name,
-                                               void (*sub_callback)(const void *));
+                                               void (*sub_callback)(const void *, void *),
+                                               void *cb_context);
 uros_status_t uros_subscriber_close(rcl_node_t *node);
 
 // micro-ROS parameter server APIs

@@ -18,11 +18,12 @@
  * @brief micro-ROS subscriber register
  */
 typedef struct {
-    rcl_subscription_t subscriber;  /*!> micro-ROS subscriber */
-    const char *name;               /*!> Subscriber name */
-    void (*callback)(const void *); /*!> Subscriber callback */
-    std_msgs__msg__Float32 msg;     /*!> Subscriber message */
-    bool is_init;                   /*!> Is subscriber initialized */
+    rcl_subscription_t subscriber;          /*!> micro-ROS subscriber */
+    const char *name;                       /*!> Subscriber name */
+    void (*callback)(const void *, void *); /*!> Subscriber callback */
+    void *cb_context;                       /*!> Subscriber callback context */
+    std_msgs__msg__Float32 msg;             /*!> Subscriber message */
+    bool is_init;                           /*!> Is subscriber initialized */
 } subscriber_float32_reg_t;
 
 static subscriber_float32_reg_t _subscriber_float32_reg[UROS_SUBSCRIBER_MAX_FLOAT32];
@@ -40,9 +41,10 @@ void uros_subscriber_init(rcl_node_t *node, rclc_executor_t *executor) {
         rclc_subscription_init_default(&_subscriber_float32_reg[i].subscriber, node,
                                        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
                                        _subscriber_float32_reg[i].name);
-        rclc_executor_add_subscription(executor, &_subscriber_float32_reg[i].subscriber,
-                                       &_subscriber_float32_reg[i].msg,
-                                       _subscriber_float32_reg[i].callback, ON_NEW_DATA);
+        rclc_executor_add_subscription_with_context(
+            executor, &_subscriber_float32_reg[i].subscriber, &_subscriber_float32_reg[i].msg,
+            _subscriber_float32_reg[i].callback, _subscriber_float32_reg[i].cb_context,
+            ON_NEW_DATA);
         _subscriber_float32_reg[i].is_init = true;
     }
 }
@@ -52,13 +54,15 @@ void uros_subscriber_init(rcl_node_t *node, rclc_executor_t *executor) {
  * @param subscriber_name: micro-ROS subscriber name
  */
 uros_status_t uros_subscriber_register_float32(const char *subscriber_name,
-                                               void (*sub_callback)(const void *)) {
+                                               void (*sub_callback)(const void *, void *),
+                                               void *cb_context) {
     if (_subscriber_float32_w_head >= UROS_SUBSCRIBER_MAX_FLOAT32) {
         return UROS_ERROR;
     }
     _subscriber_float32_w_head++;
     _subscriber_float32_reg[_subscriber_float32_w_head - 1].name = subscriber_name;
     _subscriber_float32_reg[_subscriber_float32_w_head - 1].callback = sub_callback;
+    _subscriber_float32_reg[_subscriber_float32_w_head - 1].cb_context = cb_context;
     _subscriber_float32_reg[_subscriber_float32_w_head - 1].is_init = false;
     return UROS_OK;
 }
