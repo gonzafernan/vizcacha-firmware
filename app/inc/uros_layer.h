@@ -17,7 +17,10 @@ extern "C" {
 
 typedef enum { UROS_OK, UROS_ERROR } uros_status_t;
 
-typedef void (*param_double_callback_t)(double); /*!> Double parameter callback for update */
+/**
+ * @brief Double parameter callback for update
+ */
+typedef void (*param_double_callback_t)(void *, double);
 
 void uros_layer_init(void *transport_obj);
 
@@ -41,7 +44,8 @@ uros_status_t uros_parameter_server_init(rcl_node_t *node, rclc_executor_t *exec
 uros_status_t uros_parameter_server_deinit(rcl_node_t *node);
 uros_status_t uros_parameter_queue_double(const char *param_name, const char *param_description,
                                           const char *param_limits, double initial_value,
-                                          param_double_callback_t on_change_callback);
+                                          param_double_callback_t on_change_callback,
+                                          void *context);
 uros_status_t uros_parameter_register_double(void);
 
 #ifdef __cplusplus

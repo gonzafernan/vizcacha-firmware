@@ -30,6 +30,7 @@ typedef struct {
     const char *limits;                         /*!> Parameter limits description */
     double value;                               /*!> Parameter value */
     param_double_callback_t on_change_callback; /*!> Callback for update on change */
+    void *cb_context;                           /*!> User context for callback */
 } param_double_reg_t;
 
 static rclc_parameter_server_t param_server; /*!> micro-ROS parameter server */
@@ -42,13 +43,16 @@ static QueueHandle_t _param_double_reg_queue = NULL;
  * @brief Get double parameter callback for update
  * @param param_name: micro-ROS parameter name
  */
-param_double_callback_t get_on_change_callback(const char *param_name) {
+uros_status_t get_on_change_callback(const char *param_name, param_double_callback_t *callback,
+                                     void **context) {
     for (uint8_t i = 0; i < _param_double_w_head; i++) { // linear search o(n)
         if (0 == strcmp(param_name, _param_double_reg[i].name)) {
-            return _param_double_reg[i].on_change_callback;
+            *callback = _param_double_reg[i].on_change_callback;
+            *context = _param_double_reg[i].cb_context;
+            return UROS_OK;
         }
     }
-    return NULL;
+    return UROS_ERROR;
 }
 
 /**
@@ -81,9 +85,10 @@ bool on_parameter_changed(const Parameter *old_param, const Parameter *new_param
             printf(" Old value: %f, New value: %f (double)", old_param->value.double_value,
                    new_param->value.double_value);
             param_double_callback_t on_change_double_callback;
-            on_change_double_callback = get_on_change_callback(new_param->name.data);
+            void *context;
+            get_on_change_callback(new_param->name.data, &on_change_double_callback, &context);
             if (NULL != on_change_double_callback) {
-                on_change_double_callback(new_param->value.double_value);
+                on_change_double_callback(context, new_param->value.double_value);
             }
             break;
         default:
@@ -126,7 +131,8 @@ uros_status_t uros_parameter_server_deinit(rcl_node_t *node) {
  */
 uros_status_t uros_parameter_queue_double(const char *param_name, const char *param_description,
                                           const char *param_limits, double initial_value,
-                                          param_double_callback_t on_change_callback) {
+                                          param_double_callback_t on_change_callback,
+                                          void *context) {
     _param_double_w_head++;
     if (_param_double_w_head > UROS_PARAM_SERVER_MAX_DOUBLES) {
         return UROS_ERROR;
@@ -145,6 +151,7 @@ uros_status_t uros_parameter_queue_double(const char *param_name, const char *pa
     _param_double_reg[_param_double_w_head - 1].limits = param_limits;
     _param_double_reg[_param_double_w_head - 1].value = initial_value;
     _param_double_reg[_param_double_w_head - 1].on_change_callback = on_change_callback;
+    _param_double_reg[_param_double_w_head - 1].cb_context = context;
 
     if (pdPASS != xQueueSend(_param_double_reg_queue, &_param_double_reg[_param_double_w_head - 1],
                              portMAX_DELAY)) {
