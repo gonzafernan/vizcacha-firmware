@@ -47,6 +47,14 @@ void pid_kp_update(pid_controller_t *pid, float new_value) {
     pid->kp = new_value;
 }
 
+void pid_ki_update(pid_controller_t *pid, float new_value) {
+    pid->ki = new_value;
+}
+
+void pid_kd_update(pid_controller_t *pid, float new_value) {
+    pid->kd = new_value;
+}
+
 /**
  * @brief PID controller update
  */

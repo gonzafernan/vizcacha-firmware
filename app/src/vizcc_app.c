@@ -11,7 +11,6 @@
 #include "hbridge.h"
 #include "main.h"
 #include "pid.h"
-#include "stm32f4xx_hal_gpio.h"
 #include "tim.h"
 #include "uros_layer.h"
 #include "usart.h"
@@ -62,8 +61,8 @@ struct {
 void pid_setpoint_callback(const void *msgin, void *context);
 
 void pid_kp_update_wrapper(void *context, double new_value);
-// void pid_ki_update_wrapper(void *context, double new_value);
-// void pid_kd_update_wrapper(void *context, double new_value);
+void pid_ki_update_wrapper(void *context, double new_value);
+void pid_kd_update_wrapper(void *context, double new_value);
 
 void vizcc_app_logger_task(void *argument);
 void vizcc_app_control_task(void *argument);
@@ -107,14 +106,12 @@ void vizcc_app_init(void) {
 
     // rtos tasks initialization
     vizcc_logger_task_handle =
-        osThreadNew(vizcc_app_logger_task, (void *)&_vizcc_app, &vizcc_logger_task_attributes);
+        osThreadNew(vizcc_app_logger_task, NULL, &vizcc_logger_task_attributes);
     vizcc_control_task_handle =
-        osThreadNew(vizcc_app_control_task, (void *)&_vizcc_app, &vizcc_control_task_attributes);
+        osThreadNew(vizcc_app_control_task, NULL, &vizcc_control_task_attributes);
 }
 
 void vizcc_app_control_task(void *argument) {
-
-    struct _vizcc_app *app = (struct _vizcc_app *)argument;
 
     float pid1_out = 0;
     float pid2_out = 0;
@@ -157,18 +154,20 @@ void vizcc_app_control_task(void *argument) {
 
 void vizcc_app_logger_task(void *argument) {
 
-    struct _vizcc_app *app = (struct _vizcc_app *)argument;
-
     uros_status_t uros_status;
 
     uros_status = uros_parameter_queue_double("wheel1/pid_kp", "Wheel 1 PID KP", NULL, 800.0,
                                               pid_kp_update_wrapper, (void *)&_vizcc_app.hpid1);
-    // uros_status = uros_parameter_queue_double("wheel1/pid_ki", "Wheel 1 PID KI", NULL, 0.0,
-    //                                           pid_ki_update_wrapper, (void *)&_vizcc_app.hpid1);
-    // uros_status = uros_parameter_queue_double("wheel1/pid_kd", "Wheel 1 PID KD", NULL, 0.0,
-    //                                           pid_kd_update_wrapper, (void *)&_vizcc_app.hpid1);
+    uros_status = uros_parameter_queue_double("wheel1/pid_ki", "Wheel 1 PID KI", NULL, 0.0,
+                                              pid_ki_update_wrapper, (void *)&_vizcc_app.hpid1);
+    uros_status = uros_parameter_queue_double("wheel1/pid_kd", "Wheel 1 PID KD", NULL, 0.0,
+                                              pid_kd_update_wrapper, (void *)&_vizcc_app.hpid1);
     uros_status = uros_parameter_queue_double("wheel2/pid_kp", "Wheel 2 PID KP", NULL, 800.0,
                                               pid_kp_update_wrapper, (void *)&_vizcc_app.hpid2);
+    // uros_status = uros_parameter_queue_double("wheel2/pid_ki", "Wheel 2 PID KI", NULL, 0.0,
+    //                                           pid_ki_update_wrapper, (void *)&_vizcc_app.hpid2);
+    // uros_status = uros_parameter_queue_double("wheel2/pid_kd", "Wheel 2 PID KD", NULL, 0.0,
+    //                                           pid_kd_update_wrapper, (void *)&_vizcc_app.hpid2);
     // uros_publisher_register_float32("encoder1/vel_raw");
     // uros_publisher_register_float32("encoder1/vel_filtered");
     // uros_publisher_register_float32("encoder2/vel_raw");
@@ -208,9 +207,11 @@ void pid_setpoint_callback(const void *msgin, void *context) {
 void pid_kp_update_wrapper(void *context, double new_value) {
     pid_kp_update((pid_controller_t *)context, (float)new_value);
 }
-// void pid_ki_update_wrapper(void *context, double new_value) {
-//     pid_ki_update((pid_controller_t *)&context, (float)new_value);
-// }
-// void pid_kd_update_wrapper(void *context, double new_value) {
-//     pid_kd_update((pid_controller_t *)&context, (float)new_value);
-// }
+
+void pid_ki_update_wrapper(void *context, double new_value) {
+    pid_ki_update((pid_controller_t *)&context, (float)new_value);
+}
+
+void pid_kd_update_wrapper(void *context, double new_value) {
+    pid_kd_update((pid_controller_t *)&context, (float)new_value);
+}
