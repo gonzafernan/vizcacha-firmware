@@ -41,11 +41,14 @@ app/src/uros_publisher.c \
 app/src/uros_subscriber.c \
 app/src/uros_parameter_server.c \
 app/src/vizcc_app.c \
+app/src/vizcc_sensor.c \
 app/src/vizcc_model.c \
 app/src/encoder.c \
 app/src/hbridge.c \
 app/src/pid.c \
 app/src/filter.c \
+app_drivers/mpu6050/src/mpu6050.c \
+app_drivers/mpu6050/src/port_i2c.c \
 Core/Src/main.c \
 Core/Src/syscalls.c \
 Core/Src/gpio.c \
@@ -144,6 +147,7 @@ AS_INCLUDES =  \
 # C includes
 C_INCLUDES =  \
 -Iapp/inc \
+-Iapp_drivers/mpu6050/inc \
 -ICore/Inc \
 -IDrivers/STM32F4xx_HAL_Driver/Inc \
 -IDrivers/STM32F4xx_HAL_Driver/Inc/Legacy \
