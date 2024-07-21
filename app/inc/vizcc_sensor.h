@@ -17,6 +17,18 @@
 extern "C" {
 #endif
 
+#include "vizcc_defs.h"
+
+/**
+ * @brief Message definition for Inertial Measurement Unit (IMU)
+ */
+typedef struct {
+    double angular_velocity[3];    /*!> Angular velocity in x, y, z axis */
+    double linear_acceleration[3]; /*!> Linear acceleration in x, y, z axis */
+} vizcc_imu_msg_t;
+
+vizcc_status_t vizcc_sensor_init(void);
+
 #ifdef __cplusplus
 }
 #endif

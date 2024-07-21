@@ -11,6 +11,7 @@
 extern "C" {
 #endif
 
+#include "vizcc_sensor.h"
 #include <rclc/executor.h>
 #include <rclc_parameter/rclc_parameter.h>
 #include <stdint.h>
@@ -30,6 +31,12 @@ uros_status_t uros_publisher_register_float32(const char *publisher_name);
 uros_status_t uros_publisher_queue_float32_value(const char *publisher_name, float *value);
 uros_status_t uros_publisher_publish(rcl_node_t *node);
 uros_status_t uros_publisher_close(rcl_node_t *node);
+
+// micro-ROS publisher for IMU
+int uros_publisher_imu_init(rcl_node_t *node);
+int uros_publisher_imu_queue_value(vizcc_imu_msg_t *value);
+int uros_publisher_imu_publish(rcl_node_t *node);
+int uros_publisher_imu_close(rcl_node_t *node);
 
 // micro-ROS subscriber
 void uros_subscriber_init(rcl_node_t *node, rclc_executor_t *executor);

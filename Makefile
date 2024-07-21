@@ -38,6 +38,7 @@ BUILD_DIR = build
 C_SOURCES =  \
 app/src/uros_layer.c \
 app/src/uros_publisher.c \
+app/src/uros_publisher_imu.c \
 app/src/uros_subscriber.c \
 app/src/uros_parameter_server.c \
 app/src/vizcc_app.c \
