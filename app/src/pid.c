@@ -90,19 +90,19 @@ float pid_controller_update(pid_controller_t *pid, float input) {
         pid->integrate = pid->lim_min_int;
     }
 
-    pid->derivate = -(2.0f * pid->kd * (input - pid->prev_input) +
-                      (2.0f * pid->tau - pid->dt) * pid->derivate) /
-                    (2.0f * pid->tau + pid->dt);
+    // pid->derivate = -(2.0f * pid->kd * (input - pid->prev_input) +
+    //                   (2.0f * pid->tau - pid->dt) * pid->derivate) /
+    //                 (2.0f * pid->tau + pid->dt);
 
     if (pid->ki == 0) {
         pid->integrate = 0;
     }
-    if (pid->kd == 0) {
-        pid->derivate = 0;
-    }
+    // if (pid->kd == 0) {
+    //     pid->derivate = 0;
+    // }
 
     // pid->output = proportional + pid->integrate + pid->integrate;
-    pid->output = proportional + pid->integrate + pid->derivate;
+    pid->output = proportional + pid->integrate; // + pid->derivate;
 
     // clamp controller output
     if (pid->output > pid->lim_max) {

@@ -165,14 +165,17 @@ uros_status_t uros_parameter_queue_double(const char *param_name, const char *pa
  */
 uros_status_t uros_parameter_register_double(void) {
     param_double_reg_t param_double_reg;
+    if (NULL == _param_double_reg_queue) {
+        return UROS_ERROR;
+    }
     BaseType_t status = xQueueReceive(_param_double_reg_queue, &param_double_reg, 0);
     // TODO: Error handling
     if (pdPASS == status) {
         rcl_ret_t rc;
         rc = rclc_add_parameter(&param_server, param_double_reg.name, RCLC_PARAMETER_DOUBLE);
-        rc =
-            rclc_parameter_set_double(&param_server, param_double_reg.name, param_double_reg.value);
         rclc_add_parameter_description(&param_server, param_double_reg.name,
                                        param_double_reg.description, param_double_reg.limits);
+        rc =
+            rclc_parameter_set_double(&param_server, param_double_reg.name, param_double_reg.value);
     }
 }

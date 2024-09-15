@@ -79,7 +79,7 @@ void uros_layer_init(void *transport_obj) {
  */
 void uros_timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
     if (timer != NULL) {
-        // uros_parameter_register_double();
+        uros_parameter_register_double();
         // uros_publisher_imu_init(&node);
         // uros_publisher_imu_publish(&node);
         uros_publisher_init(&node);
@@ -164,7 +164,7 @@ void uros_layer_task(void *transport_obj) {
     // close micro-ROS service and node
     // rcl_service_fini(&service, &node);
     uros_publisher_close(&node);
-    uros_publisher_imu_close(&node);
+    // uros_publisher_imu_close(&node);
     uros_subscriber_close(&node);
     uros_parameter_server_deinit(&node);
     rcl_node_fini(&node);
