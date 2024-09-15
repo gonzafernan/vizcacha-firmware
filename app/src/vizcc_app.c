@@ -62,6 +62,8 @@ struct {
 
 float vv_wheel1 = 0.0;
 float vv_wheel2 = 0.0;
+float vv_wheel1_filtered = 0.0;
+float vv_wheel2_filtered = 0.0;
 
 void pid_setpoint_callback(const void *msgin, void *context);
 
@@ -125,9 +127,9 @@ void vizcc_app_control_task(void *argument) {
     int16_t enc1_diff = 0;
     int16_t enc2_diff = 0;
 
-    // filter_iir_t enc1_filter, enc2_filter;
-    // filter_init(&enc1_filter);
-    // filter_init(&enc2_filter);
+    filter_iir_t enc1_filter, enc2_filter;
+    filter_init(&enc1_filter);
+    filter_init(&enc2_filter);
 
     TickType_t last_wake_time = xTaskGetTickCount();
 
@@ -141,15 +143,14 @@ void vizcc_app_control_task(void *argument) {
         enc2_diff = encoder_diff_value(&_vizcc_app.henc2);
 
         // get velocity
-        vv_wheel1 = (float)enc1_diff;
-        vv_wheel2 = (float)enc2_diff;
-        // vv_wheel1 = ((float)enc1_diff) * (ACTUATOR_ENCODER_PPR / ACTUATOR_GEARBOX_RATIO) /
-        //             VIZCC_CONTROL_DT_MS;
-        // vv_wheel2 = ((float)enc2_diff) * (ACTUATOR_ENCODER_PPR / ACTUATOR_GEARBOX_RATIO) /
-        //             VIZCC_CONTROL_DT_MS;
+        vv_wheel1 = ((float)enc1_diff) * (float)ACTUATOR_ENCODER_PPR /
+                    (float)ACTUATOR_GEARBOX_RATIO / (float)VIZCC_CONTROL_DT_MS;
+        vv_wheel2 = ((float)enc2_diff) * (float)ACTUATOR_ENCODER_PPR /
+                    (float)ACTUATOR_GEARBOX_RATIO / (float)VIZCC_CONTROL_DT_MS;
+
         // filter vel
-        // vv_wheel1_filtered = filter_update(&enc1_filter, vv_wheel1);
-        // vv_wheel2_filtered = filter_update(&enc2_filter, vv_wheel2);
+        vv_wheel1_filtered = filter_update(&enc1_filter, vv_wheel1);
+        vv_wheel2_filtered = filter_update(&enc2_filter, vv_wheel2);
 
         // pid1_out = pid_controller_update(&_vizcc_app.hpid1, vv_wheel1_filtered);
         // pid2_out = pid_controller_update(&_vizcc_app.hpid2, vv_wheel2_filtered);
@@ -180,9 +181,9 @@ void vizcc_app_logger_task(void *argument) {
     // //                                           pid_kd_update_wrapper, (void
     // *)&_vizcc_app.hpid2);
     uros_publisher_register_float32("encoder1/vel_raw");
-    // uros_publisher_register_float32("encoder1/vel_filtered");
+    uros_publisher_register_float32("encoder1/vel_filtered");
     uros_publisher_register_float32("encoder2/vel_raw");
-    // uros_publisher_register_float32("encoder2/vel_filtered");
+    uros_publisher_register_float32("encoder2/vel_filtered");
 
     // uros_publisher_register_float32("pose/cmd_vel");
     // uros_publisher_register_float32("pose/cmd_rot");
@@ -200,9 +201,9 @@ void vizcc_app_logger_task(void *argument) {
         vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(VIZCC_LOGGER_DT_MS));
 
         uros_publisher_queue_float32_value("encoder1/vel_raw", &vv_wheel1);
-        // uros_publisher_queue_float32_value("encoder1/vel_filtered", &vv_wheel1_filtered);
+        uros_publisher_queue_float32_value("encoder1/vel_filtered", &vv_wheel1_filtered);
         uros_publisher_queue_float32_value("encoder2/vel_raw", &vv_wheel2);
-        // uros_publisher_queue_float32_value("encoder2/vel_filtered", &vv_wheel2_filtered);
+        uros_publisher_queue_float32_value("encoder2/vel_filtered", &vv_wheel2_filtered);
         // uros_publisher_queue_float32_value("pose/cmd_vel", &_vizcc_app.lvel);
         // uros_publisher_queue_float32_value("pose/cmd_rot", &_vizcc_app.rvel);
         HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
