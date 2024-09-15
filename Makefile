@@ -42,6 +42,7 @@ app/src/uros_publisher_imu.c \
 app/src/uros_subscriber.c \
 app/src/uros_parameter_server.c \
 app/src/vizcc_app.c \
+app/src/vizcc_wbc.c \
 app/src/vizcc_sensor.c \
 app/src/vizcc_model.c \
 app/src/encoder.c \

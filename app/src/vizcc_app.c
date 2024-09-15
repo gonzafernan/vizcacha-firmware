@@ -11,15 +11,16 @@
 #include "hbridge.h"
 #include "main.h"
 #include "pid.h"
+#include "queue.h"
 #include "tim.h"
 #include "uros_layer.h"
 #include "usart.h"
-#include "vizcc_model.h"
 #include "vizcc_sensor.h"
+#include "vizcc_wbc.h"
 #include "vizzcc_config.h"
 #include <std_msgs/msg/float32.h>
 
-#define VIZCC_CONTROL_DT_MS 20
+#define VIZCC_CONTROL_DT_MS 2 /*!> Actuator control time period in ms */
 #define VIZCC_LOGGER_DT_MS 100
 
 // logger task
@@ -55,15 +56,15 @@ struct {
     encoder_t henc2;        /*!> Incremental encoder 2 */
     pid_controller_t hpid1; /*!> PID controller 1 */
     pid_controller_t hpid2; /*!> PID controller 2 */
-    vizcc_model_t model;    /*!> Vizcacha mechanical model */
-    float lvel;             /*!> Linear velocity */
-    float rvel;             /*!> Rotational velocity */
 } _vizcc_app;
+
+static vizcc_joint_state_t _vizcc_joint_state;   /*!> Vizcacha currnt joint state */
+static vizcc_task_state_t _vizcc_task_state;     /*!> Vizcacha currnt task state */
+static QueueHandle_t _vizcc_joint_state_mailbox; /*!> Mailbox to share joint state between tasks */
+static QueueHandle_t _vizcc_task_state_mailbox;  /*!> Mailbox to share task state between tasks */
 
 float vv_wheel1 = 0.0;
 float vv_wheel2 = 0.0;
-float vv_wheel1_filtered = 0.0;
-float vv_wheel2_filtered = 0.0;
 
 void pid_setpoint_callback(const void *msgin, void *context);
 
@@ -101,12 +102,16 @@ void vizcc_app_init(void) {
     pid_controller_init(&_vizcc_app.hpid1, VIZCC_CONTROL_DT_MS);
     pid_controller_init(&_vizcc_app.hpid2, VIZCC_CONTROL_DT_MS);
 
-    // // vizcacha mechanical model initialization
-    // vizcc_model_init(&_vizcc_app.model, 64.0, 200.0);
+    // current state initialization
+    _vizcc_joint_state.left_wheel_vel = 0.0;
+    _vizcc_joint_state.right_wheel_vel = 0.0;
+    _vizcc_joint_state_mailbox = xQueueCreate(1, sizeof(vizcc_joint_state_t));
+    _vizcc_task_state.linear_body_vel = 0.0;
+    _vizcc_task_state.angular_body_vel = 0.0;
+    _vizcc_task_state_mailbox = xQueueCreate(1, sizeof(vizcc_task_state_t));
 
-    // // internal state initialization
-    // _vizcc_app.lvel = 0.0;
-    // _vizcc_app.rvel = 0.0;
+    // Whole-body control init
+    vizcc_wbc_init((void *)_vizcc_joint_state_mailbox, (void *)_vizcc_task_state_mailbox);
 
     // initialize micro-ROS layer
     uros_layer_init((void *)&huart3);
@@ -149,17 +154,16 @@ void vizcc_app_control_task(void *argument) {
                     (float)ACTUATOR_GEARBOX_RATIO / (float)VIZCC_CONTROL_DT_MS;
 
         // filter vel
-        vv_wheel1_filtered = filter_update(&enc1_filter, vv_wheel1);
-        vv_wheel2_filtered = filter_update(&enc2_filter, vv_wheel2);
+        _vizcc_joint_state.left_wheel_vel = filter_update(&enc1_filter, vv_wheel1);
+        _vizcc_joint_state.right_wheel_vel = filter_update(&enc2_filter, vv_wheel2);
 
         // actuator setpoint update
-        pid1_out = pid_controller_update(&_vizcc_app.hpid1, vv_wheel1_filtered);
-        pid2_out = pid_controller_update(&_vizcc_app.hpid2, vv_wheel2_filtered);
+        pid1_out = pid_controller_update(&_vizcc_app.hpid1, _vizcc_joint_state.left_wheel_vel);
+        pid2_out = pid_controller_update(&_vizcc_app.hpid2, _vizcc_joint_state.right_wheel_vel);
         hbridge_set_pwm(&_vizcc_app.hbridge1, (int32_t)pid1_out);
         hbridge_set_pwm(&_vizcc_app.hbridge2, (int32_t)pid2_out);
 
-        // vizcc_model_forward_kinematics(&_vizcc_app.model, vv_wheel1_filtered, vv_wheel2_filtered,
-        //                                &_vizcc_app.lvel, &_vizcc_app.rvel);
+        xQueueOverwrite(_vizcc_joint_state_mailbox, (void *)&_vizcc_joint_state);
     }
 }
 
@@ -188,8 +192,8 @@ void vizcc_app_logger_task(void *argument) {
     uros_publisher_register_float32("wheel1/pid_output");
     uros_publisher_register_float32("wheel2/pid_output");
 
-    // uros_publisher_register_float32("pose/cmd_vel");
-    // uros_publisher_register_float32("pose/cmd_rot");
+    uros_publisher_register_float32("pose/cmd_vel");
+    uros_publisher_register_float32("pose/cmd_rot");
 
     uros_subscriber_register_float32("wheel1/vel_cmd", pid_setpoint_callback,
                                      (void *)&_vizcc_app.hpid1);
@@ -197,20 +201,28 @@ void vizcc_app_logger_task(void *argument) {
                                      (void *)&_vizcc_app.hpid2);
 
     TickType_t last_wake_time = xTaskGetTickCount();
+    vizcc_task_state_t task_state;
 
     /* Infinite loop */
     for (;;) {
-
         vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(VIZCC_LOGGER_DT_MS));
 
+        // Get current task state
+        xQueuePeek(_vizcc_task_state_mailbox, (void *)&task_state, portMAX_DELAY);
+
         uros_publisher_queue_float32_value("encoder1/vel_raw", &vv_wheel1);
-        uros_publisher_queue_float32_value("encoder1/vel_filtered", &vv_wheel1_filtered);
+        // TODO: Receive state through mailbox in task argument
+        uros_publisher_queue_float32_value("encoder1/vel_filtered",
+                                           &_vizcc_joint_state.left_wheel_vel);
         uros_publisher_queue_float32_value("encoder2/vel_raw", &vv_wheel2);
-        uros_publisher_queue_float32_value("encoder2/vel_filtered", &vv_wheel2_filtered);
+        uros_publisher_queue_float32_value("encoder2/vel_filtered",
+                                           &_vizcc_joint_state.right_wheel_vel);
         uros_publisher_queue_float32_value("wheel1/pid_output", (float *)&_vizcc_app.hpid1.output);
         uros_publisher_queue_float32_value("wheel2/pid_output", (float *)&_vizcc_app.hpid2.output);
-        // uros_publisher_queue_float32_value("pose/cmd_vel", &_vizcc_app.lvel);
-        // uros_publisher_queue_float32_value("pose/cmd_rot", &_vizcc_app.rvel);
+
+        uros_publisher_queue_float32_value("pose/cmd_vel", &task_state.linear_body_vel);
+        uros_publisher_queue_float32_value("pose/cmd_rot", &task_state.angular_body_vel);
+
         HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
     }
 }
