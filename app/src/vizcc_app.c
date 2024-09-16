@@ -58,10 +58,17 @@ struct {
     pid_controller_t hpid2; /*!> PID controller 2 */
 } _vizcc_app;
 
-static vizcc_joint_state_t _vizcc_joint_state;   /*!> Vizcacha currnt joint state */
-static vizcc_task_state_t _vizcc_task_state;     /*!> Vizcacha currnt task state */
+static vizcc_joint_state_t _vizcc_joint_state;    /*!> Vizcacha current joint state */
+static vizcc_joint_state_t _vizcc_joint_setpoint; /*!> Vizcacha current joint setpoint */
+static vizcc_task_state_t _vizcc_task_state;      /*!> Vizcacha current task state */
+static vizcc_task_state_t _vizcc_task_setpoint;   /*!> Vizcacha current task setpoint */
+
 static QueueHandle_t _vizcc_joint_state_mailbox; /*!> Mailbox to share joint state between tasks */
-static QueueHandle_t _vizcc_task_state_mailbox;  /*!> Mailbox to share task state between tasks */
+static QueueHandle_t
+    _vizcc_joint_setpoint_mailbox; /*!> Mailbox to share joint setpoint between tasks */
+static QueueHandle_t _vizcc_task_state_mailbox; /*!> Mailbox to share task state between tasks */
+static QueueHandle_t
+    _vizcc_task_setpoint_mailbox; /*!> Mailbox to share task setpoint between tasks */
 
 float vv_wheel1 = 0.0;
 float vv_wheel2 = 0.0;
@@ -71,6 +78,9 @@ void pid_setpoint_callback(const void *msgin, void *context);
 void pid_kp_update_wrapper(void *context, double new_value);
 void pid_ki_update_wrapper(void *context, double new_value);
 void pid_kd_update_wrapper(void *context, double new_value);
+
+void task_linear_setpoint_callback(const void *msgin, void *context);
+void task_angular_setpoint_callback(const void *msgin, void *context);
 
 void vizcc_app_logger_task(void *argument);
 void vizcc_app_control_task(void *argument);
@@ -110,8 +120,17 @@ void vizcc_app_init(void) {
     _vizcc_task_state.angular_body_vel = 0.0;
     _vizcc_task_state_mailbox = xQueueCreate(1, sizeof(vizcc_task_state_t));
 
+    // setpoint initialization
+    _vizcc_joint_setpoint.left_wheel_vel = 0.0;
+    _vizcc_joint_setpoint.right_wheel_vel = 0.0;
+    _vizcc_joint_setpoint_mailbox = xQueueCreate(1, sizeof(vizcc_joint_state_t));
+    _vizcc_task_setpoint.linear_body_vel = 0.0;
+    _vizcc_task_setpoint.angular_body_vel = 0.0;
+    _vizcc_task_setpoint_mailbox = xQueueCreate(1, sizeof(vizcc_task_state_t));
+
     // Whole-body control init
-    vizcc_wbc_init((void *)_vizcc_joint_state_mailbox, (void *)_vizcc_task_state_mailbox);
+    vizcc_wbc_init((void *)_vizcc_joint_state_mailbox, (void *)_vizcc_joint_setpoint_mailbox,
+                   (void *)_vizcc_task_state_mailbox, (void *)_vizcc_task_setpoint_mailbox);
 
     // initialize micro-ROS layer
     uros_layer_init((void *)&huart3);
@@ -126,7 +145,6 @@ void vizcc_app_init(void) {
 }
 
 void vizcc_app_control_task(void *argument) {
-
     float pid1_out = 0;
     float pid2_out = 0;
     int16_t enc1_diff = 0;
@@ -157,18 +175,23 @@ void vizcc_app_control_task(void *argument) {
         _vizcc_joint_state.left_wheel_vel = filter_update(&enc1_filter, vv_wheel1);
         _vizcc_joint_state.right_wheel_vel = filter_update(&enc2_filter, vv_wheel2);
 
-        // actuator setpoint update
+        // state update
+        xQueueOverwrite(_vizcc_joint_state_mailbox, (void *)&_vizcc_joint_state);
+
+        // setpoint update
+        xQueuePeek(_vizcc_joint_setpoint_mailbox, (void *)&_vizcc_joint_setpoint, 0);
+        pid_setpoint_update(&_vizcc_app.hpid1, _vizcc_joint_setpoint.left_wheel_vel);
+        pid_setpoint_update(&_vizcc_app.hpid2, _vizcc_joint_setpoint.right_wheel_vel);
+
+        // perform actuator control
         pid1_out = pid_controller_update(&_vizcc_app.hpid1, _vizcc_joint_state.left_wheel_vel);
         pid2_out = pid_controller_update(&_vizcc_app.hpid2, _vizcc_joint_state.right_wheel_vel);
         hbridge_set_pwm(&_vizcc_app.hbridge1, (int32_t)pid1_out);
         hbridge_set_pwm(&_vizcc_app.hbridge2, (int32_t)pid2_out);
-
-        xQueueOverwrite(_vizcc_joint_state_mailbox, (void *)&_vizcc_joint_state);
     }
 }
 
 void vizcc_app_logger_task(void *argument) {
-
     uros_status_t uros_status;
 
     uros_status = uros_parameter_queue_double("wheel1/pid_kp", "Wheel 1 PID KP", NULL, 800.0,
@@ -176,39 +199,47 @@ void vizcc_app_logger_task(void *argument) {
     uros_status = uros_parameter_queue_double("wheel1/pid_ki", "Wheel 1 PID KI", NULL, 0.0,
                                               pid_ki_update_wrapper, (void *)&_vizcc_app.hpid1);
     // uros_status = uros_parameter_queue_double("wheel1/pid_kd", "Wheel 1 PID KD", NULL, 0.0,
-    //                                           pid_kd_update_wrapper, (void *)&_vizcc_app.hpid1);
+    //                                           pid_kd_update_wrapper, (void
+    //                                           *)&_vizcc_app.hpid1);
     uros_status = uros_parameter_queue_double("wheel2/pid_kp", "Wheel 2 PID KP", NULL, 800.0,
                                               pid_kp_update_wrapper, (void *)&_vizcc_app.hpid2);
     uros_status = uros_parameter_queue_double("wheel2/pid_ki", "Wheel 2 PID KI", NULL, 0.0,
                                               pid_ki_update_wrapper, (void *)&_vizcc_app.hpid2);
     // uros_status = uros_parameter_queue_double("wheel2/pid_kd", "Wheel 2 PID KD", NULL, 0.0,
-    //                                           pid_kd_update_wrapper, (void *)&_vizcc_app.hpid2);
+    //                                           pid_kd_update_wrapper, (void
+    //                                           *)&_vizcc_app.hpid2);
 
     uros_publisher_register_float32("encoder1/vel_raw");
     uros_publisher_register_float32("encoder1/vel_filtered");
     uros_publisher_register_float32("encoder2/vel_raw");
     uros_publisher_register_float32("encoder2/vel_filtered");
 
-    uros_publisher_register_float32("wheel1/pid_output");
-    uros_publisher_register_float32("wheel2/pid_output");
+    uros_publisher_register_float32("wheel1/angular_setpoint");
+    uros_publisher_register_float32("wheel2/angular_setpoint");
 
     uros_publisher_register_float32("pose/cmd_vel");
     uros_publisher_register_float32("pose/cmd_rot");
 
-    uros_subscriber_register_float32("wheel1/vel_cmd", pid_setpoint_callback,
-                                     (void *)&_vizcc_app.hpid1);
-    uros_subscriber_register_float32("wheel2/vel_cmd", pid_setpoint_callback,
-                                     (void *)&_vizcc_app.hpid2);
+    // uros_subscriber_register_float32("wheel1/vel_cmd", pid_setpoint_callback,
+    //                                  (void *)&_vizcc_app.hpid1);
+    // uros_subscriber_register_float32("wheel2/vel_cmd", pid_setpoint_callback,
+    //                                  (void *)&_vizcc_app.hpid2);
+
+    // task setpoint
+    uros_subscriber_register_float32("pose/linear_setpoint", task_linear_setpoint_callback, NULL);
+    uros_subscriber_register_float32("pose/angular_setpoint", task_angular_setpoint_callback, NULL);
 
     TickType_t last_wake_time = xTaskGetTickCount();
     vizcc_task_state_t task_state;
+    vizcc_joint_state_t joint_setpoint;
 
     /* Infinite loop */
     for (;;) {
         vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(VIZCC_LOGGER_DT_MS));
 
         // Get current task state
-        xQueuePeek(_vizcc_task_state_mailbox, (void *)&task_state, portMAX_DELAY);
+        xQueuePeek(_vizcc_task_state_mailbox, (void *)&task_state, 0);
+        xQueuePeek(_vizcc_joint_setpoint_mailbox, (void *)&joint_setpoint, 0);
 
         uros_publisher_queue_float32_value("encoder1/vel_raw", &vv_wheel1);
         // TODO: Receive state through mailbox in task argument
@@ -217,8 +248,15 @@ void vizcc_app_logger_task(void *argument) {
         uros_publisher_queue_float32_value("encoder2/vel_raw", &vv_wheel2);
         uros_publisher_queue_float32_value("encoder2/vel_filtered",
                                            &_vizcc_joint_state.right_wheel_vel);
-        uros_publisher_queue_float32_value("wheel1/pid_output", (float *)&_vizcc_app.hpid1.output);
-        uros_publisher_queue_float32_value("wheel2/pid_output", (float *)&_vizcc_app.hpid2.output);
+
+        uros_publisher_queue_float32_value("wheel1/angular_setpoint",
+                                           (float *)&joint_setpoint.left_wheel_vel);
+        uros_publisher_queue_float32_value("wheel2/angular_setpoint",
+                                           (float *)&joint_setpoint.right_wheel_vel);
+
+        // uros_publisher_queue_float32_value("wheel1/pid_output", (float
+        // *)&_vizcc_app.hpid1.output); uros_publisher_queue_float32_value("wheel2/pid_output",
+        // (float *)&_vizcc_app.hpid2.output);
 
         uros_publisher_queue_float32_value("pose/cmd_vel", &task_state.linear_body_vel);
         uros_publisher_queue_float32_value("pose/cmd_rot", &task_state.angular_body_vel);
@@ -227,11 +265,11 @@ void vizcc_app_logger_task(void *argument) {
     }
 }
 
-void pid_setpoint_callback(const void *msgin, void *context) {
-    pid_controller_t *hpid = (pid_controller_t *)context;
-    std_msgs__msg__Float32 *msg = (std_msgs__msg__Float32 *)msgin;
-    pid_setpoint_update(hpid, (float)msg->data);
-}
+// void pid_setpoint_callback(const void *msgin, void *context) {
+//     pid_controller_t *hpid = (pid_controller_t *)context;
+//     std_msgs__msg__Float32 *msg = (std_msgs__msg__Float32 *)msgin;
+//     pid_setpoint_update(hpid, (float)msg->data);
+// }
 
 void pid_kp_update_wrapper(void *context, double new_value) {
     pid_kp_update((pid_controller_t *)context, (float)new_value);
@@ -243,4 +281,15 @@ void pid_ki_update_wrapper(void *context, double new_value) {
 
 void pid_kd_update_wrapper(void *context, double new_value) {
     pid_kd_update((pid_controller_t *)&context, (float)new_value);
+}
+
+// TODO: Change message to pose type for simplified logic
+void task_linear_setpoint_callback(const void *msgin, void *context) {
+    std_msgs__msg__Float32 *msg = (std_msgs__msg__Float32 *)msgin;
+    vizcc_wbc_set_linear_setpoint((float)msg->data);
+}
+
+void task_angular_setpoint_callback(const void *msgin, void *context) {
+    std_msgs__msg__Float32 *msg = (std_msgs__msg__Float32 *)msgin;
+    vizcc_wbc_set_angular_setpoint((float)msg->data);
 }

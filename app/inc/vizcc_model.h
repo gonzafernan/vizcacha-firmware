@@ -16,3 +16,5 @@ void vizcc_model_init(vizcc_model_t *self, float wheel_r, float body_width);
 void vizcc_model_deinit(vizcc_model_t *self);
 void vizcc_model_forward_kinematics(vizcc_model_t *self, float w_left, float w_right, float *v_out,
                                     float *w_out);
+void vizcc_model_inverse_kinematics(vizcc_model_t *self, float linear_vel, float angular_vel,
+                                    float *left_wheel_vel, float *right_wheel_vel);

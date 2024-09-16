@@ -26,11 +26,20 @@ void vizcc_model_deinit(vizcc_model_t *self) {
 }
 
 /**
- * @brief Vizchacha forward kinematics
+ * @brief Vizcacha forward kinematics
  * @param self: main context
  */
 void vizcc_model_forward_kinematics(vizcc_model_t *self, float w_left, float w_right, float *v_out,
                                     float *w_out) {
     *v_out = (self->wheel_r / 2) * (w_left + w_right);
     *w_out = (self->wheel_r / self->body_width) * (w_right - w_left);
+}
+
+/**
+ * @brief Vizcacha inverse kinematics
+ */
+void vizcc_model_inverse_kinematics(vizcc_model_t *self, float linear_vel, float angular_vel,
+                                    float *left_wheel_vel, float *right_wheel_vel) {
+    *left_wheel_vel = (linear_vel - (angular_vel * self->body_width / 2)) / self->wheel_r;
+    *right_wheel_vel = (linear_vel + (angular_vel * self->body_width / 2)) / self->wheel_r;
 }
