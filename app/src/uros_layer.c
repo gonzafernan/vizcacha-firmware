@@ -80,8 +80,8 @@ void uros_layer_init(void *transport_obj) {
 void uros_timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
     if (timer != NULL) {
         uros_parameter_register_double();
-        // uros_publisher_imu_init(&node);
-        // uros_publisher_imu_publish(&node);
+        uros_publisher_imu_init(&node);
+        uros_publisher_imu_publish(&node);
         uros_publisher_init(&node);
         uros_publisher_publish(&node);
         uros_subscriber_init(&node, &executor);

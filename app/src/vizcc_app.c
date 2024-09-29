@@ -135,7 +135,7 @@ void vizcc_app_init(void) {
     // initialize micro-ROS layer
     uros_layer_init((void *)&huart3);
 
-    // vizcc_sensor_init();
+    vizcc_sensor_init();
 
     // rtos tasks initialization
     vizcc_logger_task_handle =
